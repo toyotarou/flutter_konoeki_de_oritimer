@@ -39,40 +39,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   StreamSubscription<Position>? _positionStream;
 
   ///
-  final List<StationModel> _stations = const <StationModel>[
-    StationModel('東京', 35.681236, 139.767125),
-    StationModel('神田', 35.691690, 139.770883),
-    StationModel('秋葉原', 35.698683, 139.774219),
-    StationModel('御徒町', 35.707438, 139.774632),
-    StationModel('上野', 35.713768, 139.777254),
-    StationModel('鶯谷', 35.721484, 139.778969),
-    StationModel('日暮里', 35.727772, 139.770987),
-    StationModel('西日暮里', 35.732135, 139.766787),
-    StationModel('田端', 35.738079, 139.761210),
-    StationModel('駒込', 35.736489, 139.746875),
-    StationModel('巣鴨', 35.733492, 139.739345),
-    StationModel('大塚', 35.731401, 139.728662),
-    StationModel('池袋', 35.728926, 139.710380),
-    StationModel('目白', 35.721204, 139.706587),
-    StationModel('高田馬場', 35.712777, 139.703643),
-    StationModel('新大久保', 35.701273, 139.700309),
-    StationModel('新宿', 35.690921, 139.700258),
-    StationModel('代々木', 35.683061, 139.702042),
-    StationModel('原宿', 35.670168, 139.702687),
-    StationModel('渋谷', 35.658034, 139.701636),
-    StationModel('恵比寿', 35.646690, 139.710106),
-    StationModel('目黒', 35.633998, 139.715828),
-    StationModel('五反田', 35.626446, 139.723444),
-    StationModel('大崎', 35.619700, 139.728553),
-    StationModel('品川', 35.628471, 139.738760),
-    StationModel('高輪ゲートウェイ', 35.635191, 139.740083),
-    StationModel('田町', 35.645736, 139.747575),
-    StationModel('浜松町', 35.655646, 139.757091),
-    StationModel('新橋', 35.666195, 139.758587),
-    StationModel('有楽町', 35.675069, 139.763328),
-  ];
-
-  ///
   @override
   void initState() {
     super.initState();
@@ -201,10 +167,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
         title: const Text('この駅で降りタイマー'),
         actions: <Widget>[
           //          IconButton(onPressed: _showTestNotification, icon: const Icon(Icons.notifications_active), tooltip: '通知テスト'),
+
+          //////
           GestureDetector(
-            onTap: () {
-              _requestPermissions();
-            },
+            onTap: () => _requestPermissions(),
             child: Column(
               children: [
                 Icon(Icons.security, color: (_permissionsGranted) ? Colors.yellowAccent : Colors.white),
@@ -216,12 +182,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
               ],
             ),
           ),
+
           SizedBox(width: 20),
 
           GestureDetector(
-            onTap: () {
-              _removeAllGeofences();
-            },
+            onTap: () => _registerSelectedStation(),
+            child: Column(
+              children: [
+                Icon(Icons.remove_red_eye, color: (_selected != null) ? Colors.yellowAccent : Colors.white),
+                SizedBox(height: 5),
+                Text(
+                  'setting',
+                  style: TextStyle(fontSize: 10, color: (_selected != null) ? Colors.yellowAccent : Colors.white),
+                ),
+              ],
+            ),
+          ),
+
+          SizedBox(width: 20),
+
+          GestureDetector(
+            onTap: () => _removeAllGeofences(),
             child: Column(
               children: [
                 Icon(Icons.close),
@@ -234,73 +215,106 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
           SizedBox(width: 20),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('駅を選択', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
 
-                Text('選択中: ${selected?.name ?? "(未選択)"}'),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [Text('選択中: ${selected?.name ?? "(未選択)"}'), SizedBox.shrink()],
+              ),
+
+              Divider(color: Colors.white.withValues(alpha: 0.5), thickness: 5),
+
+              Expanded(child: displayStationList()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  ///
+  Widget displayStationList() {
+    final List<Widget> list = <Widget>[];
+
+    for (var element in tokyoTrainState.tokyoTrainList) {
+      List<Widget> list2 = <Widget>[];
+      for (var element2 in element.station) {
+        list2.add(
+          Container(
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.3))),
+            ),
+            padding: const EdgeInsets.all(5),
+
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () =>
+                      setState(() => _selected = StationModel(element2.stationName, element2.lat, element2.lng)),
+
+                  child: CircleAvatar(
+                    radius: 15,
+                    backgroundColor: (_selected != null && _selected!.name == element2.stationName)
+                        ? Colors.yellowAccent.withValues(alpha: 0.3)
+                        : Colors.black.withValues(alpha: 0.3),
+                  ),
+                ),
+
+                SizedBox(width: 20),
+
+                Expanded(flex: 2, child: Text(element2.stationName, maxLines: 1, overflow: TextOverflow.ellipsis)),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [Text(element2.lat.toString()), Text(element2.lng.toString())],
+                  ),
+                ),
               ],
             ),
+          ),
+        );
+      }
 
-            Divider(color: Colors.white.withValues(alpha: 0.5), thickness: 5),
+      list.add(
+        Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(color: Colors.yellowAccent.withValues(alpha: 0.1)),
+              margin: EdgeInsets.only(top: 20),
+              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
 
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: _stations.map((StationModel s) {
-                    final bool isSel = selected?.name == s.name;
-                    return Container(
-                      decoration: BoxDecoration(
-                        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.3))),
-                      ),
-                      padding: const EdgeInsets.all(5),
-
-                      child: GestureDetector(
-                        onTap: () => setState(() {
-                          _selected = s;
-                        }),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: <Widget>[
-                            CircleAvatar(
-                              radius: 24,
-                              child: Text(
-                                s.name.characters.take(2).toString(),
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            const SizedBox(width: 20),
-                            Text(
-                              s.name,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                                decoration: isSel ? TextDecoration.underline : TextDecoration.none,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [Text(element.trainName), SizedBox.shrink()],
               ),
             ),
 
-            ElevatedButton.icon(
-              onPressed: _registerSelectedStation,
-              icon: const Icon(Icons.add_location_alt),
-              label: const Text('この駅で監視開始'),
+            Row(
+              children: [
+                SizedBox(width: 30),
+                Expanded(child: Column(children: list2)),
+              ],
             ),
           ],
         ),
-      ),
+      );
+    }
+
+    return CustomScrollView(
+      slivers: <Widget>[
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (BuildContext context, int index) => list[index],
+            childCount: list.length,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -342,7 +356,7 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
   await notifications.show(
     id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     title: '降りる駅アラーム',
-    body: '到着（または進入）しました: $stationNames / event=${params.event}',
+    body: '$stationNames \n event=${params.event}',
     notificationDetails: details,
   );
 }

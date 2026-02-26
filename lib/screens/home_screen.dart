@@ -11,8 +11,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../model/station_model.dart';
-
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({
     super.key,
@@ -32,7 +30,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<HomeScreen> {
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
 
-  StationModel? _selected;
+  TokyoStationModel? _selected;
 
   bool _permissionsGranted = false;
 
@@ -95,14 +93,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
   ///
   Future<void> _registerSelectedStation() async {
-    final StationModel? s = _selected;
+    final TokyoStationModel? s = _selected;
 
     if (s == null) {
       return;
     }
 
     final Geofence zone = Geofence(
-      id: 'station_${s.name}',
+      id: 'station_${s.stationName}',
       location: Location(latitude: s.lat, longitude: s.lng),
       radiusMeters: 500,
       triggers: <GeofenceEvent>{GeofenceEvent.enter},
@@ -160,7 +158,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   ///
   @override
   Widget build(BuildContext context) {
-    final StationModel? selected = _selected;
+    final TokyoStationModel? selected = _selected;
 
     return Scaffold(
       appBar: AppBar(
@@ -224,7 +222,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
             children: <Widget>[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [Text('選択中: ${selected?.name ?? "(未選択)"}'), SizedBox.shrink()],
+                children: [Text('選択中: ${selected?.stationName ?? "(未選択)"}'), SizedBox.shrink()],
               ),
 
               Divider(color: Colors.white.withValues(alpha: 0.5), thickness: 5),
@@ -241,7 +239,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   Widget displayStationList() {
     final List<Widget> list = <Widget>[];
 
-    for (var element in tokyoTrainState.tokyoTrainList) {
+    for (var element in widget.tokyoTrainList) {
       List<Widget> list2 = <Widget>[];
       for (var element2 in element.station) {
         list2.add(
@@ -254,12 +252,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
             child: Row(
               children: [
                 GestureDetector(
-                  onTap: () =>
-                      setState(() => _selected = StationModel(element2.stationName, element2.lat, element2.lng)),
+                  onTap: () => setState(() => _selected = element2),
 
                   child: CircleAvatar(
                     radius: 15,
-                    backgroundColor: (_selected != null && _selected!.name == element2.stationName)
+                    backgroundColor: (_selected != null && _selected!.stationName == element2.stationName)
                         ? Colors.yellowAccent.withValues(alpha: 0.3)
                         : Colors.black.withValues(alpha: 0.3),
                   ),

@@ -2,6 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 	<dict>
+		<!-- バックグラウンドで位置情報を使用するために必須 -->
+		<key>UIBackgroundModes</key>
+		<array>
+			<string>location</string>
+		</array>
+
+		<!-- 位置情報の使用目的（iOS 必須） -->
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>選択した駅に近づいたときに通知するため、位置情報を使用します。</string>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>他のアプリを使用中や画面オフ中でも駅到着を検知するため、常に位置情報へのアクセスが必要です。</string>
+		<key>NSLocationAlwaysUsageDescription</key>
+		<string>バックグラウンドでも駅到着を検知するため、常に位置情報へのアクセスが必要です。</string>
+
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>

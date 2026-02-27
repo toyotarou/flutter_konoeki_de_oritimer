@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -7,7 +6,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
 import 'package:flutter_oritimer/model/tokyo_train_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -33,8 +31,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   TokyoStationModel? _selected;
 
   bool _permissionsGranted = false;
-
-  StreamSubscription<Position>? _positionStream;
 
   ///
   @override
@@ -84,14 +80,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   }
 
   ///
-  void _startLocationStream() {
-    _positionStream?.cancel();
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10),
-    ).listen((Position pos) {}, onError: (Object e) {});
-  }
-
-  ///
   Future<void> _registerSelectedStation() async {
     final TokyoStationModel? s = _selected;
 
@@ -115,22 +103,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
     try {
       await NativeGeofenceManager.instance.createGeofence(zone, geofenceCallback);
-
-      _startLocationStream();
     } catch (_) {}
   }
 
   ///
   Future<void> _removeAllGeofences() async {
     await NativeGeofenceManager.instance.removeAllGeofences();
-    _positionStream?.cancel();
-    _positionStream = null;
   }
 
   ///
   @override
   void dispose() {
-    _positionStream?.cancel();
     super.dispose();
   }
 

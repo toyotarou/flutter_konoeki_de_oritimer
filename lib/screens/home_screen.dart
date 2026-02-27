@@ -184,14 +184,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
           SizedBox(width: 20),
 
           GestureDetector(
-            onTap: () => _registerSelectedStation(),
+            onTap: () {
+              appParamNotifier.setIsSetStation(flag: true);
+
+              _registerSelectedStation();
+            },
             child: Column(
               children: [
-                Icon(Icons.remove_red_eye, color: (_selected != null) ? Colors.yellowAccent : Colors.white),
+                Icon(Icons.remove_red_eye, color: (appParamState.isSetStation) ? Colors.yellowAccent : Colors.white),
                 SizedBox(height: 5),
                 Text(
                   'setting',
-                  style: TextStyle(fontSize: 10, color: (_selected != null) ? Colors.yellowAccent : Colors.white),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: (appParamState.isSetStation) ? Colors.yellowAccent : Colors.white,
+                  ),
                 ),
               ],
             ),
@@ -200,7 +207,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
           SizedBox(width: 20),
 
           GestureDetector(
-            onTap: () => _removeAllGeofences(),
+            onTap: () {
+              appParamNotifier.setIsSetStation(flag: false);
+
+              _removeAllGeofences();
+            },
             child: Column(
               children: [
                 Icon(Icons.close),
@@ -353,7 +364,7 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
   await notifications.show(
     id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     title: '降りる駅アラーム',
-    body: '$stationNames \n event=${params.event}',
+    body: stationNames,
     notificationDetails: details,
   );
 }

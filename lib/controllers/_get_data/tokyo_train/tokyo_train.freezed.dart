@@ -23,9 +23,7 @@ mixin _$TokyoTrainState {
   Map<String, List<TokyoTrainModel>> get tokyoStationTokyoTrainModelListMap =>
       throw _privateConstructorUsedError;
 
-  /// Create a copy of TokyoTrainState
-  /// with the given fields replaced by the non-null parameter values.
-  @JsonKey(includeFromJson: false, includeToJson: false)
+  @JsonKey(ignore: true)
   $TokyoTrainStateCopyWith<TokyoTrainState> get copyWith =>
       throw _privateConstructorUsedError;
 }
@@ -52,8 +50,6 @@ class _$TokyoTrainStateCopyWithImpl<$Res, $Val extends TokyoTrainState>
   // ignore: unused_field
   final $Res Function($Val) _then;
 
-  /// Create a copy of TokyoTrainState
-  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -101,8 +97,6 @@ class __$$TokyoTrainStateImplCopyWithImpl<$Res>
       _$TokyoTrainStateImpl _value, $Res Function(_$TokyoTrainStateImpl) _then)
       : super(_value, _then);
 
-  /// Create a copy of TokyoTrainState
-  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -196,9 +190,7 @@ class _$TokyoTrainStateImpl implements _TokyoTrainState {
       const DeepCollectionEquality().hash(_tokyoTrainMap),
       const DeepCollectionEquality().hash(_tokyoStationTokyoTrainModelListMap));
 
-  /// Create a copy of TokyoTrainState
-  /// with the given fields replaced by the non-null parameter values.
-  @JsonKey(includeFromJson: false, includeToJson: false)
+  @JsonKey(ignore: true)
   @override
   @pragma('vm:prefer-inline')
   _$$TokyoTrainStateImplCopyWith<_$TokyoTrainStateImpl> get copyWith =>
@@ -219,11 +211,8 @@ abstract class _TokyoTrainState implements TokyoTrainState {
   Map<String, TokyoTrainModel> get tokyoTrainMap;
   @override
   Map<String, List<TokyoTrainModel>> get tokyoStationTokyoTrainModelListMap;
-
-  /// Create a copy of TokyoTrainState
-  /// with the given fields replaced by the non-null parameter values.
   @override
-  @JsonKey(includeFromJson: false, includeToJson: false)
+  @JsonKey(ignore: true)
   _$$TokyoTrainStateImplCopyWith<_$TokyoTrainStateImpl> get copyWith =>
       throw _privateConstructorUsedError;
 }

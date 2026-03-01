@@ -248,45 +248,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
       List<Widget> list2 = <Widget>[];
       for (var element2 in element.station) {
         list2.add(
-          Container(
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.3))),
-            ),
-            padding: const EdgeInsets.all(5),
+          DefaultTextStyle(
+            style: TextStyle(fontSize: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.3))),
+              ),
+              padding: const EdgeInsets.all(5),
+              margin: EdgeInsets.only(left: 20, right: 60),
 
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => setState(() => _selected = element2),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => setState(() => _selected = element2),
 
-                  child: CircleAvatar(
-                    radius: 15,
-                    backgroundColor: (_selected != null && _selected!.stationName == element2.stationName)
-                        ? Colors.yellowAccent.withValues(alpha: 0.3)
-                        : Colors.black.withValues(alpha: 0.3),
+                    child: CircleAvatar(
+                      radius: 15,
+                      backgroundColor: (_selected != null && _selected!.stationName == element2.stationName)
+                          ? Colors.yellowAccent.withValues(alpha: 0.3)
+                          : Colors.black.withValues(alpha: 0.3),
+                    ),
                   ),
-                ),
 
-                SizedBox(width: 20),
+                  SizedBox(width: 20),
 
-                Expanded(flex: 2, child: Text(element2.stationName, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  Expanded(flex: 2, child: Text(element2.stationName, maxLines: 1, overflow: TextOverflow.ellipsis)),
 
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [Text(element2.lat.toString()), Text(element2.lng.toString())],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [Text(element2.lat.toString()), Text(element2.lng.toString())],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
       }
 
       list.add(
-        Column(
-          children: [
-            Container(
+        ExpansionTile(
+          title: DefaultTextStyle(
+            style: TextStyle(fontSize: 12),
+            child: Container(
               decoration: BoxDecoration(color: Colors.yellowAccent.withValues(alpha: 0.1)),
               margin: EdgeInsets.only(top: 20),
               padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -296,14 +301,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                 children: [Text(element.trainName), SizedBox.shrink()],
               ),
             ),
-
-            Row(
-              children: [
-                SizedBox(width: 30),
-                Expanded(child: Column(children: list2)),
-              ],
-            ),
-          ],
+          ),
+          children: list2,
         ),
       );
     }
@@ -365,7 +364,7 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
   // ループバイブレーション開始（Android のみ）
   // repeat: 0 → パターンの先頭から繰り返し → Vibration.cancel() で確実に停止
   if (Platform.isAndroid) {
-    final bool? hasVibrator = await Vibration.hasVibrator();
+    final bool hasVibrator = await Vibration.hasVibrator();
     if (hasVibrator == true) {
       await Vibration.vibrate(
         pattern: <int>[0, 600, 100, 600, 100, 600, 100, 1000],

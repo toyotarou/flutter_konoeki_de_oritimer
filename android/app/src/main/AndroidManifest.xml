@@ -10,6 +10,9 @@
     <!-- Android 13+ 通知許可（local notification） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+    <!-- バイブレーション制御 -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+
     <!-- フォアグラウンドサービス（Android 9+必須） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <!-- フォアグラウンドサービスで位置情報を使う場合（Android 14+必須） -->

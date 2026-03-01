@@ -28,7 +28,7 @@
 
 ### 1.1 アプリの目的
 
-東京の電車駅を選択し、その駅の半径500m圏内に入ったときにプッシュ通知とバイブレーションで知らせる、乗り越し防止モバイルアプリケーション。
+東京の電車駅を選択し、その駅の半径1000m圏内に入ったときにプッシュ通知とループバイブレーション（ユーザーが停止するまで継続）で知らせる、乗り越し防止モバイルアプリケーション。
 外部APIサーバーから路線・駅データを取得し、OSネイティブのジオフェンス機能を利用して位置ベースのアラームを実現する。
 
 ### 1.2 主な機能
@@ -37,8 +37,9 @@
 |---|---|
 | 路線・駅一覧表示 | 外部APIから取得した東京の全路線・駅を路線ごとにグループ化して表示 |
 | 駅選択 | 一覧から降りたい駅を1つ選択する |
-| ジオフェンス監視 | 選択駅の座標に半径500mのジオフェンスを登録し、バックグラウンドで監視する |
-| 降車通知 | 圏内進入時にプッシュ通知とバイブレーションで通知する |
+| ジオフェンス監視 | 選択駅の座標に半径1000mのジオフェンスを登録し、バックグラウンドで監視する |
+| 降車通知 | 圏内進入時にプッシュ通知とループバイブレーション（最大強度・ユーザー停止まで継続）で通知する |
+| 監視状態の永続化 | SharedPreferencesに監視ON/OFFを保存し、アプリ再起動後も状態を復元する |
 | パーミッション管理 | 位置情報（常に許可）と通知パーミッションを順次要求する |
 
 ### 1.3 動作環境
@@ -79,7 +80,11 @@
 │                    ジオフェンス・通知層                          │
 │  native_geofence (OSネイティブジオフェンスの利用)               │
 │  flutter_local_notifications (プッシュ通知)                    │
+│  vibration (ループバイブレーション制御)                          │
 │  permission_handler (パーミッション要求)                        │
+├──────────────────────────────────────────────────────────────┤
+│                      永続化層                                   │
+│  shared_preferences (監視状態の端末保存・復元)                  │
 └──────────────────────────────────────────────────────────────┘
               ↕ HTTP POST (JSON)
 ┌──────────────────────────────────────────────────────────────┐
@@ -224,11 +229,11 @@ class TokyoTrainModel with _$TokyoTrainModel {
 
 ### 4.3 AppParamState（アプリ状態）
 
-用途：アプリの動作状態を保持する。DBやAPIとの通信は行わず、アプリ内部の状態管理のみ。
+用途：アプリの動作状態を保持する。SharedPreferencesと連携して、アプリ再起動後も状態を復元する。
 
 | フィールド名 | Dart型 | 初期値 | 説明 |
 |---|---|---|---|
-| isSetStation | `bool` | `false` | ジオフェンス監視中かどうかのフラグ |
+| isSetStation | `bool` | `false` | ジオフェンス監視中かどうかのフラグ（SharedPreferencesに永続化） |
 
 **freezedクラス定義（概要）:**
 
@@ -240,6 +245,14 @@ class AppParamState with _$AppParamState {
   }) = _AppParamState;
 }
 ```
+
+**SharedPreferencesキー:**
+
+| キー名 | 型 | 内容 |
+|---|---|---|
+| `'isSetStation'` | `bool` | 監視中=`true`、停止中=キーなし（`remove`で削除） |
+
+> **補足：** 停止時は `setBool(false)` ではなく `remove()` でキーを削除する設計にしている。`getBool()` が `null` を返したときに `?? false` でデフォルト値を適用するためである。
 
 ### 4.4 TokyoTrainState（路線・駅データ状態）
 
@@ -285,8 +298,16 @@ Notifier:   AppParam
 操作メソッド:
   setIsSetStation({required bool flag})
     → isSetStation を更新する（監視開始時: true、停止時: false）
+    → 同時に SharedPreferences に保存する（_persistFlag を内部で呼ぶ）
+    → flag=true のとき: prefs.setBool('isSetStation', true)
+    → flag=false のとき: prefs.remove('isSetStation')
 
-使用箇所:    HomeScreen（ジオフェンス監視状態の管理・表示）
+  loadFromPrefs()  ← アプリ起動時に呼ぶ
+    → SharedPreferences から 'isSetStation' を読み込む
+    → 値が存在すれば isSetStation: true として state を更新する
+    → 値がなければ（null）isSetStation: false のまま（デフォルト）
+
+使用箇所:    HomeScreen（ジオフェンス監視状態の管理・表示・復元）
 ```
 
 #### tokyoTrainProvider
@@ -376,6 +397,7 @@ MyApp (StatelessWidget):
   1. FlutterLocalNotificationsPlugin の初期化
   2. NativeGeofenceManager の初期化
   3. パーミッション状態の確認 → `_isPermissionGranted` を更新
+  4. `appParamNotifier.loadFromPrefs()` → SharedPreferences から監視状態を復元する
 
 **画面レイアウト:**
 
@@ -409,7 +431,7 @@ MyApp (StatelessWidget):
 |---|---|---|---|
 | パーミッション要求 | `Icons.lock` | `_isPermissionGranted.value == true` → `Colors.yellow`、それ以外 → デフォルト | `_requestPermissions()` を呼び出す |
 | 監視開始 | `Icons.remove_red_eye` | `appParamState.isSetStation == true` → `Colors.yellow`、それ以外 → デフォルト | `_registerSelectedStation()` を呼び出す |
-| 監視停止 | `Icons.close` | 常にデフォルト | `NativeGeofenceManager.instance.removeAllGeofences()` を呼び出し、`setIsSetStation(flag: false)` で状態を更新 |
+| 監視停止 | `Icons.close` | 常にデフォルト | `NativeGeofenceManager.instance.removeAllGeofences()` を呼び出し、`Vibration.cancel()` でバイブレーションを停止し、`setIsSetStation(flag: false)` で状態を更新 |
 
 **現在の選択駅表示:**
 
@@ -478,41 +500,83 @@ ListTile の構成:
 
 ```dart
 @pragma('vm:entry-point')
-void _geofenceTriggered(List<String> geofenceIds) async {
+Future<void> geofenceCallback(GeofenceCallbackParams params) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try { DartPluginRegistrant.ensureInitialized(); } catch (_) {}
+
   // 1. FlutterLocalNotificationsPlugin の初期化
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+  final FlutterLocalNotificationsPlugin notifications =
       FlutterLocalNotificationsPlugin();
-  // （Android/iOS の初期化設定）
+  await notifications.initialize(/* 省略 */);
 
   // 2. プッシュ通知を発火
-  await flutterLocalNotificationsPlugin.show(
-    0,
-    '降りる駅が近づいています',
-    '${geofenceIds.toString()} に近づきました',
-    NotificationDetails(
+  await notifications.show(
+    id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    title: '降りる駅アラーム',
+    body: params.geofences.map((g) => g.id).join(', '),
+    notificationDetails: NotificationDetails(
       android: AndroidNotificationDetails(
-        'oritimer_channel',
-        'oriTimer通知',
+        'geofence', 'Geofence',
         importance: Importance.max,
         priority: Priority.high,
-        vibrationPattern: Int64List.fromList([0, 800, 200, 800, 200, 1200]),
+        vibrationPattern: Int64List.fromList([0, 600, 100, 600, 100, 600, 100, 1000]),
       ),
       iOS: const DarwinNotificationDetails(),
     ),
   );
+
+  // 3. ループバイブレーション開始（Android のみ）
+  if (Platform.isAndroid) {
+    final bool? hasVibrator = await Vibration.hasVibrator();
+    if (hasVibrator == true) {
+      await Vibration.vibrate(
+        pattern: [0, 600, 100, 600, 100, 600, 100, 1000],
+        intensities: [0, 255, 0, 255, 0, 255, 0, 255],  // 最大強度
+        repeat: 0,  // 先頭からループ
+      );
+    }
+  }
 }
 ```
 
-**バイブレーションパターン:**
+**バイブレーションパターン（v1.1以降）:**
 
-| インデックス | 値(ms) | 意味 |
-|---|---|---|
-| 0 | 0 | 開始直後（待機なし） |
-| 1 | 800 | 800ms バイブレーション |
-| 2 | 200 | 200ms 停止 |
-| 3 | 800 | 800ms バイブレーション |
-| 4 | 200 | 200ms 停止 |
-| 5 | 1200 | 1200ms バイブレーション |
+| インデックス | 値(ms) | 強度 (0-255) | 意味 |
+|---|---|---|---|
+| 0 | 0 | 0 | 開始直後（待機なし） |
+| 1 | 600 | 255 | 600ms バイブレーション（最大強度） |
+| 2 | 100 | 0 | 100ms 停止 |
+| 3 | 600 | 255 | 600ms バイブレーション（最大強度） |
+| 4 | 100 | 0 | 100ms 停止 |
+| 5 | 600 | 255 | 600ms バイブレーション（最大強度） |
+| 6 | 100 | 0 | 100ms 停止 |
+| 7 | 1000 | 255 | 1000ms バイブレーション（最大強度） |
+| （ループ） | `repeat: 0` | - | index 0 に戻って繰り返す |
+
+> **補足：** `repeat: 0` はAndroidの `VibrationEffect.createWaveform(timings, amplitudes, repeat)` の第3引数に相当する。`0` を指定するとインデックス0から繰り返し再生される。`Vibration.cancel()` を呼ぶまで停止しない。
+>
+> `intensities` パラメータは Android 8.0 (API 26) 以上で有効。それ以下のバージョンではパターンのみ（強度はデフォルト）で動作する。
+
+**バイブレーション停止処理:**
+
+```dart
+// _removeAllGeofences() 内
+Future<void> _removeAllGeofences() async {
+  await NativeGeofenceManager.instance.removeAllGeofences();
+  if (Platform.isAndroid) {
+    await Vibration.cancel();  // ループ中のバイブレーションを即時停止
+  }
+}
+
+// dispose() 内（画面が破棄されるときの安全処理）
+@override
+void dispose() {
+  if (Platform.isAndroid) {
+    Vibration.cancel();
+  }
+  super.dispose();
+}
+```
 
 ---
 
@@ -630,10 +694,10 @@ try {
 
 | 設定項目 | 値 | 説明 |
 |---|---|---|
-| geofenceId | `'oritimer_geofence'` | ジオフェンスの識別子。上書き登録に使用 |
-| radiusMeters | `500.0` | ジオフェンスの半径（メートル） |
+| geofenceId | `'station_${駅名}'` | ジオフェンスの識別子 |
+| radiusMeters | `1000.0` | ジオフェンスの半径（メートル） |
 | triggers | `[GeofenceEvent.enter]` | 入場イベントのみ（退場イベントは対象外） |
-| 同時登録数 | 1件のみ | 新しい駅を設定すると同じIDで上書きされる |
+| 同時登録数 | 1件のみ | 新しい駅を設定すると前の登録は removeAllGeofences() で解除する |
 
 ### 8.2 iOS固有設定
 
@@ -745,7 +809,7 @@ flutter build ipa      # IPA生成 (iOS) ※要Xcodeと証明書
 Android Emulator:
   1. エミュレータの [Extended controls] → [Location] を開く
   2. 選択した駅の緯度経度を入力し、[SEND] を押す
-  3. ジオフェンスの境界（駅座標から500m離れた地点→500m以内の地点）を
+  3. ジオフェンスの境界（駅座標から1000m離れた地点→1000m以内の地点）を
      Send で変化させてイベントをシミュレートする
 
 実機:
@@ -760,3 +824,4 @@ Android Emulator:
 | 版 | 日付 | 内容 |
 |---|---|---|
 | 1.0 | 2026-02-28 | 初版作成 |
+| 1.1 | 2026-03-01 | ジオフェンス半径500m→1000mに変更（1.1・1.2・8.1・テスト方法）。vibration/shared_preferencesパッケージ追加（2.1）。バイブレーションループ・最大強度・停止処理を追記（6.3）。AppParamStateにSharedPreferences連携メソッドを追記（4.3・5.2）。_initPluginsにloadFromPrefsを追記（6.2） |

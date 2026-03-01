@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -8,6 +9,7 @@ import 'package:flutter_oritimer/model/tokyo_train_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:vibration/vibration.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({
@@ -51,6 +53,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
     await NativeGeofenceManager.instance.initialize();
 
     await _checkPermissions();
+
+    // アプリ再起動後も監視状態を復元する
+    await appParamNotifier.loadFromPrefs();
   }
 
   ///
@@ -90,7 +95,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
     final Geofence zone = Geofence(
       id: 'station_${s.stationName}',
       location: Location(latitude: s.lat, longitude: s.lng),
-      radiusMeters: 500,
+      radiusMeters: 1000,
       triggers: <GeofenceEvent>{GeofenceEvent.enter},
       iosSettings: const IosGeofenceSettings(initialTrigger: true),
       androidSettings: const AndroidGeofenceSettings(
@@ -109,11 +114,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   ///
   Future<void> _removeAllGeofences() async {
     await NativeGeofenceManager.instance.removeAllGeofences();
+    if (Platform.isAndroid) {
+      await Vibration.cancel();
+    }
   }
 
   ///
   @override
   void dispose() {
+    if (Platform.isAndroid) {
+      Vibration.cancel();
+    }
     super.dispose();
   }
 
@@ -337,7 +348,7 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
     channelDescription: 'Notify when entering the selected station area',
     importance: Importance.max,
     priority: Priority.high,
-    vibrationPattern: Int64List.fromList(<int>[0, 800, 200, 800, 200, 1200]),
+    vibrationPattern: Int64List.fromList(<int>[0, 600, 100, 600, 100, 600, 100, 1000]),
   );
 
   const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
@@ -350,4 +361,17 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
     body: stationNames,
     notificationDetails: details,
   );
+
+  // ループバイブレーション開始（Android のみ）
+  // repeat: 0 → パターンの先頭から繰り返し → Vibration.cancel() で確実に停止
+  if (Platform.isAndroid) {
+    final bool? hasVibrator = await Vibration.hasVibrator();
+    if (hasVibrator == true) {
+      await Vibration.vibrate(
+        pattern: <int>[0, 600, 100, 600, 100, 600, 100, 1000],
+        intensities: <int>[0, 255, 0, 255, 0, 255, 0, 255],
+        repeat: 0,
+      );
+    }
+  }
 }

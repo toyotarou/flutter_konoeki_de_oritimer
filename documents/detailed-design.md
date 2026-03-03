@@ -81,6 +81,7 @@
 │  native_geofence (OSネイティブジオフェンスの利用)               │
 │  flutter_local_notifications (プッシュ通知)                    │
 │  vibration (ループバイブレーション制御)                          │
+│  flutter_volume_controller (音楽ストリーム音量制御)              │
 │  permission_handler (パーミッション要求)                        │
 ├──────────────────────────────────────────────────────────────┤
 │                      永続化層                                   │
@@ -518,7 +519,16 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
       FlutterLocalNotificationsPlugin();
   await notifications.initialize(/* 省略 */);
 
-  // 2. プッシュ通知を発火
+  // 2. 音楽ストリームの音量を最大に上げる（Android のみ）
+  //    システム UI のスライダーを出さずに変更する
+  if (Platform.isAndroid) {
+    try {
+      await FlutterVolumeController.updateShowSystemUI(false);
+      await FlutterVolumeController.setVolume(1.0, stream: AudioStream.music);
+    } catch (_) {}
+  }
+
+  // 3. プッシュ通知を発火
   await notifications.show(
     id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     title: '降りる駅アラーム',
@@ -534,7 +544,7 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
     ),
   );
 
-  // 3. ループバイブレーション開始（Android のみ）
+  // 4. ループバイブレーション開始（Android のみ）
   if (Platform.isAndroid) {
     final bool? hasVibrator = await Vibration.hasVibrator();
     if (hasVibrator == true) {
@@ -864,3 +874,4 @@ Android Emulator:
 | 1.0 | 2026-02-28 | 初版作成 |
 | 1.1 | 2026-03-01 | ジオフェンス半径500m→1000mに変更（1.1・1.2・8.1・テスト方法）。vibration/shared_preferencesパッケージ追加（2.1）。バイブレーションループ・最大強度・停止処理を追記（6.3）。AppParamStateにSharedPreferences連携メソッドを追記（4.3・5.2）。_initPluginsにloadFromPrefsを追記（6.2） |
 | 1.2 | 2026-03-03 | 選択駅のSharedPreferences永続化を追記（4.3キー表・6.2初期化処理）。_saveSelectedStation()・_removeAllGeofences()の仕様を追記（6.3）。停止ボタンの処理説明を更新（6.2 AppBarボタン） |
+| 1.3 | 2026-03-03 | flutter_volume_controller を技術スタックに追加（2.1）。geofenceCallbackに音量最大化ステップを追記（6.3・ステップ番号を2→3・4に繰り下げ） |

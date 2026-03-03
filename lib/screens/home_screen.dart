@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:vibration/vibration.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -364,6 +365,15 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
   );
 
   await notifications.initialize(settings: initSettings);
+
+  // 音量を最大に上げる（Android のみ・音楽ストリーム）
+  // システム UI のスライダーを出さずに音量を変更する
+  if (Platform.isAndroid) {
+    try {
+      await FlutterVolumeController.updateShowSystemUI(false);
+      await FlutterVolumeController.setVolume(1.0, stream: AudioStream.music);
+    } catch (_) {}
+  }
 
   final String stationNames = params.geofences.map((ActiveGeofence g) => g.id).join(', ');
 

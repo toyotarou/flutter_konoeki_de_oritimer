@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -9,6 +10,7 @@ import 'package:flutter_oritimer/model/tokyo_train_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -56,6 +58,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
     // アプリ再起動後も監視状態を復元する
     await appParamNotifier.loadFromPrefs();
+
+    // 選択駅を復元する
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? stationJson = prefs.getString('selectedStation');
+    if (stationJson != null && mounted) {
+      try {
+        final Map<String, dynamic> map = jsonDecode(stationJson) as Map<String, dynamic>;
+        setState(() => _selected = TokyoStationModel.fromJson(map));
+      } catch (_) {}
+    }
+  }
+
+  ///
+  Future<void> _saveSelectedStation(TokyoStationModel station) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('selectedStation', jsonEncode(station.toJson()));
   }
 
   ///
@@ -116,6 +134,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
     await NativeGeofenceManager.instance.removeAllGeofences();
     if (Platform.isAndroid) {
       await Vibration.cancel();
+    }
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove('selectedStation');
+    if (mounted) {
+      setState(() => _selected = null);
     }
   }
 
@@ -260,7 +283,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
               child: Row(
                 children: [
                   GestureDetector(
-                    onTap: () => setState(() => _selected = element2),
+                    onTap: () {
+                      setState(() => _selected = element2);
+                      _saveSelectedStation(element2);
+                    },
 
                     child: CircleAvatar(
                       radius: 15,

@@ -246,13 +246,21 @@ class AppParamState with _$AppParamState {
 }
 ```
 
-**SharedPreferencesキー:**
+**SharedPreferencesキー（AppParam管理分）:**
 
-| キー名 | 型 | 内容 |
-|---|---|---|
-| `'isSetStation'` | `bool` | 監視中=`true`、停止中=キーなし（`remove`で削除） |
+| キー名 | 型 | 保存タイミング | 削除タイミング |
+|---|---|---|---|
+| `'isSetStation'` | `bool` | 目のアイコンタップ時 | 停止ボタン（×）タップ時 |
 
 > **補足：** 停止時は `setBool(false)` ではなく `remove()` でキーを削除する設計にしている。`getBool()` が `null` を返したときに `?? false` でデフォルト値を適用するためである。
+
+**SharedPreferencesキー（HomeScreen管理分）:**
+
+| キー名 | 型 | 保存タイミング | 削除タイミング |
+|---|---|---|---|
+| `'selectedStation'` | `String`（JSON） | 駅タップ時（`_saveSelectedStation()`） | 停止ボタン（×）タップ時（`_removeAllGeofences()`内） |
+
+> **補足：** 選択駅は `TokyoStationModel.toJson()` で JSON 文字列に変換して保存し、復元時は `TokyoStationModel.fromJson()` でパースする。監視状態（`isSetStation`）は `AppParam` が管理するのに対し、選択駅は `HomeScreen` が直接 SharedPreferences を扱う設計にしている。これは選択駅が画面ローカルの状態であり、Riverpod の状態に含める必要がないためである。
 
 ### 4.4 TokyoTrainState（路線・駅データ状態）
 
@@ -397,7 +405,8 @@ MyApp (StatelessWidget):
   1. FlutterLocalNotificationsPlugin の初期化
   2. NativeGeofenceManager の初期化
   3. パーミッション状態の確認 → `_isPermissionGranted` を更新
-  4. `appParamNotifier.loadFromPrefs()` → SharedPreferences から監視状態を復元する
+  4. `appParamNotifier.loadFromPrefs()` → SharedPreferences から監視状態（`isSetStation`）を復元する
+  5. SharedPreferences から `'selectedStation'` を読み込み → `TokyoStationModel.fromJson()` でパース → `setState(() => _selected = station)` で復元する
 
 **画面レイアウト:**
 
@@ -431,7 +440,7 @@ MyApp (StatelessWidget):
 |---|---|---|---|
 | パーミッション要求 | `Icons.lock` | `_isPermissionGranted.value == true` → `Colors.yellow`、それ以外 → デフォルト | `_requestPermissions()` を呼び出す |
 | 監視開始 | `Icons.remove_red_eye` | `appParamState.isSetStation == true` → `Colors.yellow`、それ以外 → デフォルト | `_registerSelectedStation()` を呼び出す |
-| 監視停止 | `Icons.close` | 常にデフォルト | `NativeGeofenceManager.instance.removeAllGeofences()` を呼び出し、`Vibration.cancel()` でバイブレーションを停止し、`setIsSetStation(flag: false)` で状態を更新 |
+| 監視停止 | `Icons.close` | 常にデフォルト | `_removeAllGeofences()` を呼び出す（ジオフェンス削除・バイブレーション停止・選択駅の SharedPreferences 削除・`_selected = null`）、`setIsSetStation(flag: false)` で状態を更新 |
 
 **現在の選択駅表示:**
 
@@ -557,14 +566,25 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
 >
 > `intensities` パラメータは Android 8.0 (API 26) 以上で有効。それ以下のバージョンではパターンのみ（強度はデフォルト）で動作する。
 
-**バイブレーション停止処理:**
+**バイブレーション停止・選択駅クリア処理（`_removeAllGeofences()`）:**
 
 ```dart
-// _removeAllGeofences() 内
 Future<void> _removeAllGeofences() async {
+  // 1. OSのジオフェンスをすべて解除
   await NativeGeofenceManager.instance.removeAllGeofences();
+
+  // 2. ループ中のバイブレーションを即時停止（Android のみ）
   if (Platform.isAndroid) {
-    await Vibration.cancel();  // ループ中のバイブレーションを即時停止
+    await Vibration.cancel();
+  }
+
+  // 3. 選択駅を SharedPreferences から削除
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  await prefs.remove('selectedStation');
+
+  // 4. 画面の選択駅表示をリセット
+  if (mounted) {
+    setState(() => _selected = null);
   }
 }
 
@@ -575,6 +595,24 @@ void dispose() {
     Vibration.cancel();
   }
   super.dispose();
+}
+```
+
+**選択駅の保存処理（`_saveSelectedStation()`）:**
+
+```dart
+Future<void> _saveSelectedStation(TokyoStationModel station) async {
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  await prefs.setString('selectedStation', jsonEncode(station.toJson()));
+}
+```
+
+駅タップ時の呼び出し:
+
+```dart
+onTap: () {
+  setState(() => _selected = station);  // 画面を即時更新
+  _saveSelectedStation(station);        // SharedPreferences に非同期保存
 }
 ```
 
@@ -825,3 +863,4 @@ Android Emulator:
 |---|---|---|
 | 1.0 | 2026-02-28 | 初版作成 |
 | 1.1 | 2026-03-01 | ジオフェンス半径500m→1000mに変更（1.1・1.2・8.1・テスト方法）。vibration/shared_preferencesパッケージ追加（2.1）。バイブレーションループ・最大強度・停止処理を追記（6.3）。AppParamStateにSharedPreferences連携メソッドを追記（4.3・5.2）。_initPluginsにloadFromPrefsを追記（6.2） |
+| 1.2 | 2026-03-03 | 選択駅のSharedPreferences永続化を追記（4.3キー表・6.2初期化処理）。_saveSelectedStation()・_removeAllGeofences()の仕様を追記（6.3）。停止ボタンの処理説明を更新（6.2 AppBarボタン） |

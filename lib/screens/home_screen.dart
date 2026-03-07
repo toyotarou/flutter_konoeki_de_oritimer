@@ -10,6 +10,7 @@ import 'package:flutter_oritimer/model/tokyo_train_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:vibration/vibration.dart';
@@ -32,6 +33,8 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<HomeScreen> {
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+  final ItemScrollController _itemScrollController = ItemScrollController();
+  final TextEditingController _searchController = TextEditingController();
 
   TokyoStationModel? _selected;
 
@@ -146,10 +149,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   ///
   @override
   void dispose() {
+    _searchController.dispose();
     if (Platform.isAndroid) {
       Vibration.cancel();
     }
     super.dispose();
+  }
+
+  ///
+  void _jumpToIndex(int index) {
+    if (!_itemScrollController.isAttached) return;
+    _itemScrollController.scrollTo(index: index, duration: const Duration(milliseconds: 450), curve: Curves.easeInOut);
   }
 
   // ///
@@ -177,6 +187,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   @override
   Widget build(BuildContext context) {
     final TokyoStationModel? selected = _selected;
+
+    // 路線名 -> リスト内インデックス
+    final Map<String, int> firstIndexByTrainName = <String, int>{};
+    for (int i = 0; i < widget.tokyoTrainList.length; i++) {
+      firstIndexByTrainName[widget.tokyoTrainList[i].trainName] = i;
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -249,6 +265,111 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: '駅名を検索',
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _searchController,
+                            builder: (_, TextEditingValue value, __) {
+                              if (value.text.isEmpty) return const SizedBox.shrink();
+                              return IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () => _searchController.clear(),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        FocusScope.of(context).unfocus();
+                        final String query = _searchController.text;
+                        _searchController.clear();
+                        showDialog<void>(
+                          context: context,
+                          builder: (BuildContext ctx) {
+                            final List<MapEntry<String, List<TokyoTrainModel>>> results = widget
+                                .tokyoStationTokyoTrainModelListMap
+                                .entries
+                                .where((MapEntry<String, List<TokyoTrainModel>> e) => e.key.startsWith(query))
+                                .toList();
+
+                            final List<({bool isHeader, String stationName, TokyoTrainModel? train})> flatItems =
+                                <({bool isHeader, String stationName, TokyoTrainModel? train})>[];
+                            for (final MapEntry<String, List<TokyoTrainModel>> entry in results) {
+                              flatItems.add((isHeader: true, stationName: entry.key, train: null));
+                              for (final TokyoTrainModel train in entry.value) {
+                                flatItems.add((isHeader: false, stationName: entry.key, train: train));
+                              }
+                            }
+
+                            return AlertDialog(
+                              title: Text(query.isEmpty ? '検索結果' : '"$query" の検索結果'),
+                              content: query.isEmpty
+                                  ? const Text('（未入力）')
+                                  : results.isEmpty
+                                  ? const Text('該当する駅が見つかりませんでした')
+                                  : SizedBox(
+                                      width: double.maxFinite,
+                                      child: ListView.builder(
+                                        shrinkWrap: true,
+                                        itemCount: flatItems.length,
+                                        itemBuilder: (_, int i) {
+                                          final ({bool isHeader, String stationName, TokyoTrainModel? train}) item =
+                                              flatItems[i];
+                                          if (item.isHeader) {
+                                            return Container(
+                                              padding: const EdgeInsets.all(3),
+                                              child: Text(
+                                                item.stationName,
+                                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                              ),
+                                            );
+                                          }
+                                          final TokyoTrainModel train = item.train!;
+                                          return ListTile(
+                                            dense: true,
+                                            contentPadding: const EdgeInsets.only(left: 16),
+                                            leading: const Icon(Icons.train),
+                                            title: Text(train.trainName),
+                                            onTap: () {
+                                              Navigator.pop(ctx);
+                                              FocusManager.instance.primaryFocus?.unfocus();
+                                              final int? targetIndex = firstIndexByTrainName[train.trainName];
+                                              if (targetIndex != null) {
+                                                _jumpToIndex(targetIndex);
+                                              }
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    ),
+                            );
+                          },
+                        );
+                      },
+
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withOpacity(0.2)),
+
+                      child: const Text('検索'),
+                    ),
+                  ],
+                ),
+              ),
+
+              SizedBox(height: 5),
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [Text('選択中: ${selected?.stationName ?? "(未選択)"}'), SizedBox.shrink()],
@@ -256,7 +377,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
               Divider(color: Colors.white.withValues(alpha: 0.5), thickness: 5),
 
-              Expanded(child: displayStationList()),
+              Expanded(child: displayStationList(firstIndexByTrainName)),
             ],
           ),
         ),
@@ -265,7 +386,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   }
 
   ///
-  Widget displayStationList() {
+  Widget displayStationList(Map<String, int> firstIndexByTrainName) {
     final List<Widget> list = <Widget>[];
 
     for (var element in widget.tokyoTrainList) {
@@ -334,15 +455,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
       );
     }
 
-    return CustomScrollView(
-      slivers: <Widget>[
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (BuildContext context, int index) => list[index],
-            childCount: list.length,
-          ),
-        ),
-      ],
+    return ScrollablePositionedList.builder(
+      itemScrollController: _itemScrollController,
+      itemCount: list.length,
+      itemBuilder: (BuildContext context, int index) => list[index],
     );
   }
 }

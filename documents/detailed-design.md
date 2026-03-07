@@ -36,6 +36,7 @@
 | 機能 | 概要 |
 |---|---|
 | 路線・駅一覧表示 | 外部APIから取得した東京の全路線・駅を路線ごとにグループ化して表示 |
+| 駅名検索 | 駅名を前方一致で検索し、ダイアログから路線を選んで該当箇所へスクロールジャンプする |
 | 駅選択 | 一覧から降りたい駅を1つ選択する |
 | ジオフェンス監視 | 選択駅の座標に半径1000mのジオフェンスを登録し、バックグラウンドで監視する |
 | 降車通知 | 圏内進入時にプッシュ通知とループバイブレーション（最大強度・ユーザー停止まで継続）で通知する |
@@ -86,6 +87,9 @@
 ├──────────────────────────────────────────────────────────────┤
 │                      永続化層                                   │
 │  shared_preferences (監視状態の端末保存・復元)                  │
+├──────────────────────────────────────────────────────────────┤
+│                     スクロール制御層                             │
+│  scrollable_positioned_list (インデックス指定スクロール)          │
 └──────────────────────────────────────────────────────────────┘
               ↕ HTTP POST (JSON)
 ┌──────────────────────────────────────────────────────────────┐
@@ -397,9 +401,11 @@ MyApp (StatelessWidget):
 
 **Widgetの種別:** HookConsumerWidget（with ControllersMixin）
 
-**ローカル状態（Hooks）:**
+**ローカル状態・コントローラー:**
 - `useState<TokyoStationModel?>(_selectedStation)` — 選択中の駅情報
 - `useState<bool>(_isPermissionGranted)` — パーミッション付与状態
+- `ItemScrollController _itemScrollController` — インデックス指定スクロール用（scrollable_positioned_list）
+- `TextEditingController _searchController` — 検索フォームのテキスト管理
 
 **初期化処理（useEffect）:**
 - `_initPlugins()` を呼び出す:
@@ -417,6 +423,8 @@ MyApp (StatelessWidget):
 │  降りタイマー                    [🔒]         [👁]         [✕]  │
 │                          パーミッション要求   監視開始/中   監視停止 │
 ├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  [  駅名を検索...                         [×]  ] [検索]         │  ← F-11
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  現在の選択駅: 渋谷駅                    ★ 監視中           │ │
@@ -451,22 +459,63 @@ MyApp (StatelessWidget):
 監視状態: appParamState.isSetStation == true の場合のみ「★ 監視中」を表示
 ```
 
+**駅名検索の実装仕様（`_jumpToIndex()` / 検索フォーム）:**
+
+```dart
+// インデックス指定スクロール
+void _jumpToIndex(int index) {
+  if (!_itemScrollController.isAttached) return;
+  _itemScrollController.scrollTo(
+    index: index,
+    duration: const Duration(milliseconds: 450),
+    curve: Curves.easeInOut,
+  );
+}
+
+// build() 内でインデックスマップを構築
+final Map<String, int> firstIndexByTrainName = {};
+for (int i = 0; i < widget.tokyoTrainList.length; i++) {
+  firstIndexByTrainName[widget.tokyoTrainList[i].trainName] = i;
+}
+```
+
+検索フォームの構成:
+- `Row(TextField + ElevatedButton)` を BBB 位置に配置
+- `TextField` の `suffixIcon`: 入力中のみ×ボタンを表示（`ValueListenableBuilder` で制御）
+- 検索ボタン押下時:
+  1. キーボードを閉じる（`FocusScope.of(context).unfocus()`）
+  2. `_searchController.text` を取得後クリア
+  3. `tokyoStationTokyoTrainModelListMap.entries` を前方一致でフィルタ
+  4. 結果を `AlertDialog` で表示
+  5. 路線 `ListTile` タップ → `Navigator.pop()` → `_jumpToIndex(firstIndexByTrainName[trainName])`
+
+検索ダイアログ内のフラットリスト構造:
+```
+[{isHeader: true,  stationName: "渋谷駅",    train: null     }]
+[{isHeader: false, stationName: "渋谷駅",    train: 山手線   }]
+[{isHeader: false, stationName: "渋谷駅",    train: 東急東横線}]
+[{isHeader: true,  stationName: "渋谷本町",  train: null     }]
+[{isHeader: false, stationName: "渋谷本町",  train: 都営大江戸}]
+```
+- `isHeader == true` → 駅名テキスト（太字）
+- `isHeader == false` → `ListTile`（路線名 + Icons.train）
+
 **路線・駅リストの実装仕様:**
 
 ```
-Widget: CustomScrollView
-  └── SliverList
-        └── 路線ごとにグループ
-              ├── グループヘッダー: 路線名テキスト
-              └── 駅リスト: ListTile（駅ごとに1行）
+Widget: ScrollablePositionedList.builder（scrollable_positioned_list）
+  itemScrollController: _itemScrollController
+  └── 路線ごとにグループ（ExpansionTile）
+        ├── title: 路線名テキスト
+        └── 駅リスト: 駅ごとに Row
 
-ListTile の構成:
-  leading: CircleAvatar
-    - 選択中:  backgroundColor: Colors.yellow, child: 空
-    - 非選択:  backgroundColor: transparent, side: BorderSide(color: Colors.white)
-  title:    駅名（TextStyle: white, fontWeight: bold）
-  subtitle: '緯度: ${lat}, 経度: ${lng}' （TextStyle: white60）
-  onTap:    _selectedStation.value = 選択した駅の TokyoStationModel
+駅 Row の構成:
+  leading: CircleAvatar（radius: 15）
+    - 選択中:  backgroundColor: Colors.yellowAccent.withValues(alpha: 0.3)
+    - 非選択:  backgroundColor: Colors.black.withValues(alpha: 0.3)
+    - onTap:  setState(() => _selected = station) + _saveSelectedStation()
+  title:    駅名（maxLines: 1）
+  subtitle: 緯度・経度を縦並びで表示
 ```
 
 **パーミッション要求処理 `_requestPermissions()`:**
@@ -875,3 +924,4 @@ Android Emulator:
 | 1.1 | 2026-03-01 | ジオフェンス半径500m→1000mに変更（1.1・1.2・8.1・テスト方法）。vibration/shared_preferencesパッケージ追加（2.1）。バイブレーションループ・最大強度・停止処理を追記（6.3）。AppParamStateにSharedPreferences連携メソッドを追記（4.3・5.2）。_initPluginsにloadFromPrefsを追記（6.2） |
 | 1.2 | 2026-03-03 | 選択駅のSharedPreferences永続化を追記（4.3キー表・6.2初期化処理）。_saveSelectedStation()・_removeAllGeofences()の仕様を追記（6.3）。停止ボタンの処理説明を更新（6.2 AppBarボタン） |
 | 1.3 | 2026-03-03 | flutter_volume_controller を技術スタックに追加（2.1）。geofenceCallbackに音量最大化ステップを追記（6.3・ステップ番号を2→3・4に繰り下げ） |
+| 1.4 | 2026-03-07 | scrollable_positioned_list を技術スタックに追加（2.1）。駅名検索機能を追加（1.2・6.2: コントローラー追加・検索フォーム実装仕様・_jumpToIndex()・firstIndexByTrainName）。路線・駅リストを CustomScrollView+SliverList から ScrollablePositionedList.builder に変更（6.2） |

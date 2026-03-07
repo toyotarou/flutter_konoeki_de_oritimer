@@ -37,6 +37,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   final TextEditingController _searchController = TextEditingController();
 
   TokyoStationModel? _selected;
+  int _destinationOccurrenceIndex = 0;
 
   bool _permissionsGranted = false;
 
@@ -162,6 +163,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
     _itemScrollController.scrollTo(index: index, duration: const Duration(milliseconds: 450), curve: Curves.easeInOut);
   }
 
+  ///
+  List<int> _getTrainIndicesForStation(String stationName) {
+    final List<int> indices = <int>[];
+    for (int i = 0; i < widget.tokyoTrainList.length; i++) {
+      if (widget.tokyoTrainList[i].station.any((TokyoStationModel s) => s.stationName == stationName)) {
+        indices.add(i);
+      }
+    }
+    return indices;
+  }
+
   // ///
   // Future<void> _showTestNotification() async {
   //   final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
@@ -279,7 +291,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                           suffixIcon: ValueListenableBuilder<TextEditingValue>(
                             valueListenable: _searchController,
-                            builder: (_, TextEditingValue value, __) {
+                            builder: (_, TextEditingValue value, _) {
                               if (value.text.isEmpty) return const SizedBox.shrink();
                               return IconButton(
                                 icon: const Icon(Icons.clear, size: 18),
@@ -360,7 +372,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                         );
                       },
 
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withOpacity(0.2)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
 
                       child: const Text('検索'),
                     ),
@@ -372,7 +384,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [Text('選択中: ${selected?.stationName ?? "(未選択)"}'), SizedBox.shrink()],
+                children: [
+                  Row(
+                    children: [
+                      Text('選択中: ${selected?.stationName ?? "(未選択)"}'),
+                      SizedBox(width: 20),
+                      if (selected != null) ...[
+                        IconButton(
+                          onPressed: () {
+                            final List<int> indices = _getTrainIndicesForStation(selected.stationName);
+                            if (indices.isNotEmpty) {
+                              setState(() => _destinationOccurrenceIndex = 0);
+                              _jumpToIndex(indices[0]);
+                            }
+                          },
+                          icon: Icon(Icons.location_on, color: Colors.greenAccent),
+                          tooltip: '選択駅へジャンプ',
+                        ),
+
+                        IconButton(
+                          onPressed: () {
+                            final List<int> indices = _getTrainIndicesForStation(selected.stationName);
+                            if (indices.isEmpty) return;
+                            final int next = (_destinationOccurrenceIndex + 1) % indices.length;
+                            setState(() => _destinationOccurrenceIndex = next);
+                            _jumpToIndex(indices[next]);
+                          },
+                          icon: Icon(Icons.swap_vert, color: Colors.greenAccent),
+                          tooltip: '次の同名駅へ',
+                        ),
+                      ] else ...[
+                        IconButton(
+                          onPressed: null,
+                          icon: const Icon(Icons.check_box_outline_blank, color: Colors.transparent),
+                        ),
+                        IconButton(onPressed: null, icon: const Icon(Icons.swap_vert, color: Colors.transparent)),
+                      ],
+                    ],
+                  ),
+                  SizedBox.shrink(),
+                ],
               ),
 
               Divider(color: Colors.white.withValues(alpha: 0.5), thickness: 5),
@@ -406,7 +457,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                 children: [
                   GestureDetector(
                     onTap: () {
-                      setState(() => _selected = element2);
+                      setState(() {
+                        _selected = element2;
+                        _destinationOccurrenceIndex = 0;
+                      });
                       _saveSelectedStation(element2);
                     },
 

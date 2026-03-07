@@ -37,6 +37,7 @@
 |---|---|
 | 路線・駅一覧表示 | 外部APIから取得した東京の全路線・駅を路線ごとにグループ化して表示 |
 | 駅名検索 | 駅名を前方一致で検索し、ダイアログから路線を選んで該当箇所へスクロールジャンプする |
+| 選択駅ジャンプ / 同名駅循環ジャンプ | 選択駅を含む最初の路線へ即座にジャンプ（📍ボタン）。同名駅が複数路線にある場合は押すたびに次の路線へ循環（↕ボタン） |
 | 駅選択 | 一覧から降りたい駅を1つ選択する |
 | ジオフェンス監視 | 選択駅の座標に半径1000mのジオフェンスを登録し、バックグラウンドで監視する |
 | 降車通知 | 圏内進入時にプッシュ通知とループバイブレーション（最大強度・ユーザー停止まで継続）で通知する |
@@ -404,6 +405,7 @@ MyApp (StatelessWidget):
 **ローカル状態・コントローラー:**
 - `useState<TokyoStationModel?>(_selectedStation)` — 選択中の駅情報
 - `useState<bool>(_isPermissionGranted)` — パーミッション付与状態
+- `int _destinationOccurrenceIndex` — 同名駅循環ジャンプで現在表示中の路線インデックス（駅選択時に 0 リセット）
 - `ItemScrollController _itemScrollController` — インデックス指定スクロール用（scrollable_positioned_list）
 - `TextEditingController _searchController` — 検索フォームのテキスト管理
 
@@ -457,6 +459,52 @@ MyApp (StatelessWidget):
 // 表示内容
 駅名:     _selectedStation.value?.stationName ?? '(未選択)'
 監視状態: appParamState.isSetStation == true の場合のみ「★ 監視中」を表示
+```
+
+**選択駅ジャンプ / 同名駅循環ジャンプの実装仕様（F-12 / F-13）:**
+
+```dart
+// 選択駅名を含む全路線インデックスを返す
+List<int> _getTrainIndicesForStation(String stationName) {
+  final List<int> indices = <int>[];
+  for (int i = 0; i < widget.tokyoTrainList.length; i++) {
+    if (widget.tokyoTrainList[i].station.any((s) => s.stationName == stationName)) {
+      indices.add(i);
+    }
+  }
+  return indices;
+}
+```
+
+選択駅ジャンプボタン（📍 / `Icons.location_on`）の処理:
+```
+1. _getTrainIndicesForStation(selected.stationName) で路線インデックスリストを取得
+2. リストが空でなければ _destinationOccurrenceIndex = 0 にリセット
+3. indices[0] へ _jumpToIndex() でジャンプ
+```
+
+同名駅循環ジャンプボタン（↕ / `Icons.swap_vert`）の処理:
+```
+1. _getTrainIndicesForStation(selected.stationName) で路線インデックスリストを取得
+2. リストが空なら何もしない
+3. next = (_destinationOccurrenceIndex + 1) % indices.length で次インデックスを計算（循環）
+4. _destinationOccurrenceIndex = next に更新
+5. indices[next] へ _jumpToIndex() でジャンプ
+```
+
+ボタン表示ルール:
+- 駅選択中: 📍と↕の両ボタンを表示（onPressed 有効）
+- 未選択時: 同じサイズの透明ダミーボタンを表示（レイアウト崩れ防止）
+
+駅選択時のリセット:
+```dart
+onTap: () {
+  setState(() {
+    _selected = element2;
+    _destinationOccurrenceIndex = 0;  // 駅が変わったらカウンターをリセット
+  });
+  _saveSelectedStation(element2);
+}
 ```
 
 **駅名検索の実装仕様（`_jumpToIndex()` / 検索フォーム）:**
@@ -925,3 +973,4 @@ Android Emulator:
 | 1.2 | 2026-03-03 | 選択駅のSharedPreferences永続化を追記（4.3キー表・6.2初期化処理）。_saveSelectedStation()・_removeAllGeofences()の仕様を追記（6.3）。停止ボタンの処理説明を更新（6.2 AppBarボタン） |
 | 1.3 | 2026-03-03 | flutter_volume_controller を技術スタックに追加（2.1）。geofenceCallbackに音量最大化ステップを追記（6.3・ステップ番号を2→3・4に繰り下げ） |
 | 1.4 | 2026-03-07 | scrollable_positioned_list を技術スタックに追加（2.1）。駅名検索機能を追加（1.2・6.2: コントローラー追加・検索フォーム実装仕様・_jumpToIndex()・firstIndexByTrainName）。路線・駅リストを CustomScrollView+SliverList から ScrollablePositionedList.builder に変更（6.2） |
+| 1.5 | 2026-03-08 | 選択駅ジャンプ・同名駅循環ジャンプ機能を追加（1.2・6.2: _destinationOccurrenceIndex ローカル状態追加・_getTrainIndicesForStation()メソッド仕様追加・📍↕ボタン実装仕様追加） |

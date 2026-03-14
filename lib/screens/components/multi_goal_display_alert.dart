@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_oritimer/screens/components/multi_goal_setting_alert.dart';
 import 'package:flutter_oritimer/screens/parts/error_dialog.dart';
 import 'package:flutter_oritimer/screens/parts/oritimer_dialog.dart';
+import 'package:native_geofence/native_geofence.dart';
 
 class MultiGoalDisplayAlert extends ConsumerStatefulWidget {
   const MultiGoalDisplayAlert({super.key});
@@ -136,10 +137,14 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
 
               if (isLast)
                 GestureDetector(
-                  onTap: () {
-                    appParamNotifier.deleteMultiGoalEntry(number: number).then((_) {
-                      _loadMultiGoals();
-                    });
+                  onTap: () async {
+                    // ジオフェンス削除
+                    try {
+                      await NativeGeofenceManager.instance.removeGeofenceById('multiGoal_$number');
+                    } catch (_) {}
+
+                    await appParamNotifier.deleteMultiGoalEntry(number: number);
+                    _loadMultiGoals();
                   },
                   child: const Icon(Icons.delete),
                 ),

@@ -7,6 +7,8 @@ class SharedPreferencesService {
   // ─── キー定数 ───────────────────────────────────────
   static const String kIsSetStation = 'isSetStation';
   static const String _kMultiGoalPrefix = 'multiGoal_';
+  static const String _kMultiGoalLatPrefix = 'multiGoalLat_';
+  static const String _kMultiGoalLngPrefix = 'multiGoalLng_';
 
   // ─── isSetStation ────────────────────────────────────
 
@@ -34,16 +36,31 @@ class SharedPreferencesService {
     await prefs.setString('$_kMultiGoalPrefix$number', stationName);
   }
 
+  /// 番号に対応する駅の座標を保存する（ジオフェンス復元用）
+  static Future<void> saveMultiGoalLocation({required int number, required double lat, required double lng}) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('$_kMultiGoalLatPrefix$number', lat);
+    await prefs.setDouble('$_kMultiGoalLngPrefix$number', lng);
+  }
+
+  /// 番号に対応する駅の座標を読み込む（lat/lng が未保存なら null）
+  static Future<({double? lat, double? lng})> loadMultiGoalLocation({required int number}) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    return (lat: prefs.getDouble('$_kMultiGoalLatPrefix$number'), lng: prefs.getDouble('$_kMultiGoalLngPrefix$number'));
+  }
+
   /// 指定した番号の駅名を読み込む
   static Future<String?> loadMultiGoalEntry({required int number}) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getString('$_kMultiGoalPrefix$number');
   }
 
-  /// 指定した番号のエントリを削除する
+  /// 指定した番号のエントリを削除する（座標も合わせて削除）
   static Future<void> deleteMultiGoalEntry({required int number}) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove('$_kMultiGoalPrefix$number');
+    await prefs.remove('$_kMultiGoalLatPrefix$number');
+    await prefs.remove('$_kMultiGoalLngPrefix$number');
   }
 
   /// 登録済みの全エントリを読み込む（番号 → 駅名）

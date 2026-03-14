@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
 import 'package:flutter_oritimer/model/tokyo_train_model.dart';
 import 'package:flutter_oritimer/screens/parts/error_dialog.dart';
+import 'package:flutter_oritimer/utility/functions.dart';
+import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
+import 'package:native_geofence/native_geofence.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class MultiGoalSettingAlert extends ConsumerStatefulWidget {
@@ -17,7 +20,8 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
   final ItemScrollController _itemScrollController = ItemScrollController();
   final TextEditingController _searchController = TextEditingController();
 
-  Set<int> _registeredSlots = <int>{};
+  Map<int, String> _registeredEntries = <int, String>{};
+  final Map<int, int> _occurrenceIndices = <int, int>{};
 
   ///
   @override
@@ -30,7 +34,7 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
   Future<void> _loadRegisteredSlots() async {
     final Map<int, String> map = await appParamNotifier.loadAllMultiGoalEntries();
     if (mounted) {
-      setState(() => _registeredSlots = map.keys.toSet());
+      setState(() => _registeredEntries = map);
     }
   }
 
@@ -91,7 +95,47 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
                           return;
                         }
 
-                        ///MMM
+                        // ジオフェンス登録
+                        final String stationName = appParamState.selectedStationName;
+                        final int number = appParamState.selectedMultiNumber;
+
+                        TokyoStationModel? stationModel;
+                        outer:
+                        for (final TokyoTrainModel train in tokyoTrainState.tokyoTrainList) {
+                          for (final TokyoStationModel s in train.station) {
+                            if (s.stationName == stationName) {
+                              stationModel = s;
+                              break outer;
+                            }
+                          }
+                        }
+
+                        if (stationModel != null) {
+                          // 座標を保存（再起動後のジオフェンス復元用）
+                          await SharedPreferencesService.saveMultiGoalLocation(
+                            number: number,
+                            lat: stationModel.lat,
+                            lng: stationModel.lng,
+                          );
+
+                          final Geofence zone = Geofence(
+                            id: 'multiGoal_$number',
+                            location: Location(latitude: stationModel.lat, longitude: stationModel.lng),
+                            radiusMeters: 1000,
+                            triggers: <GeofenceEvent>{GeofenceEvent.enter},
+                            iosSettings: const IosGeofenceSettings(initialTrigger: true),
+                            androidSettings: const AndroidGeofenceSettings(
+                              initialTriggers: <GeofenceEvent>{GeofenceEvent.enter},
+                              expiration: Duration(days: 7),
+                              loiteringDelay: Duration(minutes: 1),
+                              notificationResponsiveness: Duration(seconds: 10),
+                            ),
+                          );
+                          try {
+                            await NativeGeofenceManager.instance.createGeofence(zone, geofenceCallback);
+                          } catch (_) {}
+                        }
+
                         // ignore: use_build_context_synchronously
                         if (mounted) Navigator.pop(context);
                       },
@@ -111,26 +155,58 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: List.generate(10, (index) => index).map((e) {
-                        final bool isRegistered = _registeredSlots.contains(e);
+                        final bool isRegistered = _registeredEntries.containsKey(e);
                         final bool isSelected = appParamState.selectedMultiNumber == e;
 
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 5),
-                          child: CircleAvatar(
-                            backgroundColor: isRegistered
-                                ? Colors.red.withValues(alpha: 0.3)
-                                : isSelected
-                                ? Colors.yellowAccent.withValues(alpha: 0.3)
-                                : Colors.black.withValues(alpha: 0.3),
+                          child: Column(
+                            children: [
+                              GestureDetector(
+                                onTap: (isRegistered)
+                                    ? () {
+                                        final String stationName = _registeredEntries[e] ?? '';
+                                        final List<int> indices = getTrainIndicesForStation(
+                                          stationName: stationName,
+                                          trainList: tokyoTrainState.tokyoTrainList,
+                                        );
+                                        if (indices.isEmpty) return;
+                                        final int current = _occurrenceIndices[e] ?? 0;
+                                        final int next = (current + 1) % indices.length;
+                                        setState(() => _occurrenceIndices[e] = next);
+                                        _jumpToIndex(indices[next]);
+                                      }
+                                    : null,
+                                child: CircleAvatar(
+                                  backgroundColor: isRegistered
+                                      ? Colors.red.withValues(alpha: 0.3)
+                                      : isSelected
+                                      ? Colors.yellowAccent.withValues(alpha: 0.3)
+                                      : Colors.black.withValues(alpha: 0.3),
 
-                            child: Text(
-                              (e + 1).toString(),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isRegistered ? Colors.white.withValues(alpha: 0.5) : Colors.white,
+                                  child: Text(
+                                    (e + 1).toString(),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isRegistered ? Colors.white.withValues(alpha: 0.5) : Colors.white,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+
+                              if (isRegistered) ...[
+                                SizedBox(height: 5),
+
+                                Text(
+                                  _registeredEntries[e] ?? '',
+                                  style: const TextStyle(fontSize: 8, color: Colors.white70),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ],
+                            ],
                           ),
                         );
                       }).toList(),
@@ -140,7 +216,6 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
 
                 Divider(color: Colors.white.withValues(alpha: 0.4)),
 
-                ///HHH
                 _buildSearchRow(context, firstIndexByTrainName),
 
                 Divider(color: Colors.white.withValues(alpha: 0.4)),

@@ -13,6 +13,23 @@ class MultiGoalDisplayAlert extends ConsumerStatefulWidget {
 
 class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
     with ControllersMixin<MultiGoalDisplayAlert> {
+  Map<int, String> _multiGoalMap = <int, String>{};
+
+  ///
+  @override
+  void initState() {
+    super.initState();
+    _loadMultiGoals();
+  }
+
+  ///
+  Future<void> _loadMultiGoals() async {
+    final Map<int, String> map = await appParamNotifier.loadAllMultiGoalEntries();
+    if (mounted) {
+      setState(() => _multiGoalMap = map);
+    }
+  }
+
   ///
   @override
   Widget build(BuildContext context) {
@@ -37,7 +54,9 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                         appParamNotifier.setSelectedMultiNumber(number: -1);
                         appParamNotifier.setSelectedStationName(name: '');
 
-                        OritimerDialog(context: context, widget: const MultiGoalSettingAlert());
+                        OritimerDialog(context: context, widget: const MultiGoalSettingAlert()).then((_) {
+                          _loadMultiGoals();
+                        });
                       },
 
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
@@ -49,16 +68,61 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
 
                 Divider(color: Colors.white.withValues(alpha: 0.4), thickness: 5),
 
-                // Expanded(child: displaySalaryList()),
-                //
-                //
-                //
-                //
+                Expanded(child: _buildMultiGoalList()),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  ///
+  Widget _buildMultiGoalList() {
+    if (_multiGoalMap.isEmpty) {
+      return const Center(child: Text('登録なし'));
+    }
+
+    final List<int> sortedKeys = _multiGoalMap.keys.toList()..sort();
+    final int lastKey = sortedKeys.last;
+
+    return ListView.builder(
+      itemCount: sortedKeys.length,
+      itemBuilder: (BuildContext context, int index) {
+        final int number = sortedKeys[index];
+        final String stationName = _multiGoalMap[number]!;
+        final bool isLast = number == lastKey;
+
+        return Container(
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.3))),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            children: <Widget>[
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: Colors.yellowAccent.withValues(alpha: 0.2),
+                child: Text((number + 1).toString(), style: const TextStyle(fontSize: 12, color: Colors.white)),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(stationName, style: const TextStyle(fontSize: 14, color: Colors.white)),
+              ),
+
+              if (isLast)
+                GestureDetector(
+                  onTap: () {
+                    appParamNotifier.deleteMultiGoalEntry(number: number).then((_) {
+                      _loadMultiGoals();
+                    });
+                  },
+                  child: const Icon(Icons.delete),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

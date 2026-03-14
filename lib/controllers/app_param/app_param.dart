@@ -1,12 +1,11 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../utility/shared_preferences_service.dart';
 
 part 'app_param.freezed.dart';
 
 part 'app_param.g.dart';
-
-const String _kIsSetStation = 'isSetStation';
 
 @freezed
 class AppParamState with _$AppParamState {
@@ -25,25 +24,14 @@ class AppParam extends _$AppParam {
 
   /// アプリ起動時に SharedPreferences から状態を復元する
   Future<void> loadFromPrefs() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final bool saved = prefs.getBool(_kIsSetStation) ?? false;
+    final bool saved = await SharedPreferencesService.loadIsSetStation();
     state = state.copyWith(isSetStation: saved);
   }
 
   /// 監視ON/OFFを切り替えつつ SharedPreferences に保存する
   void setIsSetStation({required bool flag}) {
     state = state.copyWith(isSetStation: flag);
-    _persistFlag(flag);
-  }
-
-  ///
-  Future<void> _persistFlag(bool flag) async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    if (flag) {
-      await prefs.setBool(_kIsSetStation, true);
-    } else {
-      await prefs.remove(_kIsSetStation);
-    }
+    SharedPreferencesService.saveIsSetStation(flag);
   }
 
   ///
@@ -51,4 +39,25 @@ class AppParam extends _$AppParam {
 
   ///
   void setSelectedStationName({required String name}) => state = state.copyWith(selectedStationName: name);
+
+  /// selectedMultiNumber と selectedStationName の組み合わせを SharedPreferences に保存する
+  Future<void> saveMultiGoalEntry() async {
+    final int number = state.selectedMultiNumber;
+    final String stationName = state.selectedStationName;
+
+    if (number < 0 || stationName.isEmpty) return;
+
+    await SharedPreferencesService.saveMultiGoalEntry(number: number, stationName: stationName);
+  }
+
+  /// 指定した番号のマルチゴールを読み込む
+  Future<String?> loadMultiGoalEntry({required int number}) =>
+      SharedPreferencesService.loadMultiGoalEntry(number: number);
+
+  /// 指定した番号のマルチゴールを削除する
+  Future<void> deleteMultiGoalEntry({required int number}) =>
+      SharedPreferencesService.deleteMultiGoalEntry(number: number);
+
+  /// 登録済みの全マルチゴールを読み込む（番号 → 駅名）
+  Future<Map<int, String>> loadAllMultiGoalEntries() => SharedPreferencesService.loadAllMultiGoalEntries();
 }

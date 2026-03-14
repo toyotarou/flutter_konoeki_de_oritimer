@@ -132,6 +132,8 @@
 ```
 lib/
 ├── main.dart                         … アプリのエントリーポイント
+├── const/
+│   └── const.dart                    … アプリ全体の定数（バイブレーションパターン等）
 ├── screens/
 │   ├── home_screen.dart              … ホーム画面（唯一のメイン画面）
 │   ├── components/
@@ -161,6 +163,7 @@ lib/
 │   └── extensions.dart               … DateTime, String, BuildContext の拡張関数
 ├── utility/
 │   ├── utility.dart                  … Utilityクラス（エラー表示等）
+│   ├── functions.dart                … トップレベル関数（geofenceCallback・getTrainIndicesForStation）
 │   └── shared_preferences_service.dart  … SharedPreferences操作をまとめたユーティリティ
 └── assets/
     ├── images/
@@ -173,6 +176,7 @@ lib/
 
 | ディレクトリ | 置くもの | 置かないもの |
 |---|---|---|
+| `const/` | アプリ全体で共有する定数（バイブレーションパターン等） | クラス定義、ロジック |
 | `screens/` | ページ全体を構成するWidget | 再利用する部品Widget |
 | `screens/components/` | ダイアログなどの画面コンポーネント（複数画面から利用されるWidget） | ページ全体の画面 |
 | `screens/parts/` | ダイアログ共通ラッパーなどの小部品 | ページ全体の画面 |
@@ -180,7 +184,7 @@ lib/
 | `controllers/` | `@riverpod` Provider、API通信ロジック | Widget |
 | `data/http/` | HTTPクライアント、APIパス定義 | ビジネスロジック |
 | `extensions/` | 既存クラスへの拡張関数 | 新規クラス定義 |
-| `utility/` | 汎用ユーティリティ（エラー表示、SharedPreferences操作等） | 特定画面専用のロジック |
+| `utility/` | 汎用ユーティリティ（エラー表示、SharedPreferences操作、トップレベル関数等） | 特定画面専用のロジック |
 
 ---
 
@@ -251,7 +255,7 @@ class TokyoTrainModel with _$TokyoTrainModel {
 | フィールド名 | Dart型 | 初期値 | 説明 |
 |---|---|---|---|
 | isSetStation | `bool` | `false` | ジオフェンス監視中かどうかのフラグ（SharedPreferencesに永続化） |
-| selectedMultiNumber | `int` | `0` | マルチゴール設定ダイアログで選択中のスロット番号（0〜9） |
+| selectedMultiNumber | `int` | `-1` | マルチゴール設定ダイアログで選択中のスロット番号（0〜9）。未選択時は -1 |
 | selectedStationName | `String` | `''` | マルチゴール設定ダイアログで選択中の駅名 |
 
 **freezedクラス定義（概要）:**
@@ -261,7 +265,7 @@ class TokyoTrainModel with _$TokyoTrainModel {
 class AppParamState with _$AppParamState {
   const factory AppParamState({
     @Default(false) bool isSetStation,
-    @Default(0) int selectedMultiNumber,
+    @Default(-1) int selectedMultiNumber,  // 未選択状態を -1 で表現
     @Default('') String selectedStationName,
   }) = _AppParamState;
 }
@@ -326,7 +330,7 @@ class AppParamState with _$AppParamState {
 ```
 種別:        NotifierProvider（ユーザー操作で値が変わる）
 返却型:      AppParamState
-初期値:      AppParamState() → isSetStation: false, selectedMultiNumber: 0, selectedStationName: ''
+初期値:      AppParamState() → isSetStation: false, selectedMultiNumber: -1, selectedStationName: ''
 Notifier:   AppParam
 
 操作メソッド:
@@ -549,15 +553,10 @@ Future<void> _restoreMultiGoalGeofences() async {
 
 ```dart
 // 選択駅名を含む全路線インデックスを返す
-List<int> _getTrainIndicesForStation(String stationName) {
-  final List<int> indices = <int>[];
-  for (int i = 0; i < widget.tokyoTrainList.length; i++) {
-    if (widget.tokyoTrainList[i].station.any((s) => s.stationName == stationName)) {
-      indices.add(i);
-    }
-  }
-  return indices;
-}
+// 実体は lib/utility/functions.dart の getTrainIndicesForStation() に定義
+// HomeScreen 内では以下のラッパーを通して呼び出す
+List<int> _getTrainIndicesForStation(String stationName) =>
+    getTrainIndicesForStation(stationName: stationName, trainList: widget.tokyoTrainList);
 ```
 
 選択駅ジャンプボタン（📍 / `Icons.location_on`）の処理:
@@ -688,6 +687,8 @@ Widget: ScrollablePositionedList.builder（scrollable_positioned_list）
 ### 6.3 ジオフェンスコールバック（トップレベル関数）
 
 > **補足：** Flutterでバックグラウンドから関数を呼び出す場合、トップレベル関数（classの外）として定義する必要がある。これはDartのアイソレート（スレッド）の仕組みによる制約。
+>
+> **ファイル:** `lib/utility/functions.dart`（`home_screen.dart` から抽出済み）。バイブレーションパターンは `lib/const/const.dart` の `kVibrationPattern` / `kVibrationIntensities` 定数を使用する。
 
 ```dart
 @pragma('vm:entry-point')
@@ -740,6 +741,8 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
 ```
 
 **バイブレーションパターン（v1.1以降）:**
+
+> **定数定義場所:** `lib/const/const.dart` の `kVibrationPattern` / `kVibrationIntensities`。`geofenceCallback` 内で直接リテラルを書かず、これらの定数を参照する。
 
 | インデックス | 値(ms) | 強度 (0-255) | 意味 |
 |---|---|---|---|
@@ -1170,3 +1173,4 @@ Android Emulator:
 | 1.5 | 2026-03-08 | 選択駅ジャンプ・同名駅循環ジャンプ機能を追加（1.2・6.2: _destinationOccurrenceIndex ローカル状態追加・_getTrainIndicesForStation()メソッド仕様追加・📍↕ボタン実装仕様追加） |
 | 1.6 | 2026-03-14 | 複数目的地登録機能を追加。SharedPreferencesService ユーティリティクラスを追加（6.6）。MultiGoalDisplayAlert（6.4）・MultiGoalSettingAlert（6.5）の画面仕様を追加。ディレクトリ構成を更新（3: screens/components/・screens/parts/・utility/shared_preferences_service.dart 追加）。AppParamState に selectedMultiNumber・selectedStationName フィールドを追加（4.3）。SharedPreferences キー表にマルチゴールキーを追加（4.3）。appParamProvider にマルチゴール操作メソッドを追加（5.2）。ControllersMixin の定義形式を更新（5.3）。HomeScreen に _multiGoalMap・_loadMultiGoals()・_restoreMultiGoalGeofences()・「複数」ボタン・停止ボタン切り替え仕様を追加（6.2）。ジオフェンス共通設定を更新（8.1: マルチゴールID・同時登録数） |
 | 1.7 | 2026-03-14 | ポップアップメニューの全行に×ボタンを表示するよう変更（6.2 AppBarボタン実装仕様）。×タップ時に `Vibration.cancel()` を呼び出してバイブレーションを停止する処理を追加（6.2）。目のアイコンの色条件を `isSetStation || _multiGoalMap.isNotEmpty` に変更（6.2） |
+| 1.8 | 2026-03-15 | `geofenceCallback` と `getTrainIndicesForStation` を `home_screen.dart` から `utility/functions.dart` に抽出（6.2・6.3）。バイブレーション定数を `const/const.dart`（`kVibrationPattern` / `kVibrationIntensities`）に抽出（6.3）。ディレクトリ構成に `const/` と `utility/functions.dart` を追加（3）。`AppParamState.selectedMultiNumber` の初期値を `0` → `-1` に変更（4.3・5.2） |

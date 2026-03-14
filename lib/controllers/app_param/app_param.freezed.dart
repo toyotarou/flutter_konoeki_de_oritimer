@@ -17,6 +17,8 @@ final _privateConstructorUsedError = UnsupportedError(
 /// @nodoc
 mixin _$AppParamState {
   bool get isSetStation => throw _privateConstructorUsedError;
+  int get selectedMultiNumber => throw _privateConstructorUsedError;
+  String get selectedStationName => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
   $AppParamStateCopyWith<AppParamState> get copyWith =>
@@ -29,7 +31,8 @@ abstract class $AppParamStateCopyWith<$Res> {
           AppParamState value, $Res Function(AppParamState) then) =
       _$AppParamStateCopyWithImpl<$Res, AppParamState>;
   @useResult
-  $Res call({bool isSetStation});
+  $Res call(
+      {bool isSetStation, int selectedMultiNumber, String selectedStationName});
 }
 
 /// @nodoc
@@ -46,12 +49,22 @@ class _$AppParamStateCopyWithImpl<$Res, $Val extends AppParamState>
   @override
   $Res call({
     Object? isSetStation = null,
+    Object? selectedMultiNumber = null,
+    Object? selectedStationName = null,
   }) {
     return _then(_value.copyWith(
       isSetStation: null == isSetStation
           ? _value.isSetStation
           : isSetStation // ignore: cast_nullable_to_non_nullable
               as bool,
+      selectedMultiNumber: null == selectedMultiNumber
+          ? _value.selectedMultiNumber
+          : selectedMultiNumber // ignore: cast_nullable_to_non_nullable
+              as int,
+      selectedStationName: null == selectedStationName
+          ? _value.selectedStationName
+          : selectedStationName // ignore: cast_nullable_to_non_nullable
+              as String,
     ) as $Val);
   }
 }
@@ -64,7 +77,8 @@ abstract class _$$AppParamStateImplCopyWith<$Res>
       __$$AppParamStateImplCopyWithImpl<$Res>;
   @override
   @useResult
-  $Res call({bool isSetStation});
+  $Res call(
+      {bool isSetStation, int selectedMultiNumber, String selectedStationName});
 }
 
 /// @nodoc
@@ -79,12 +93,22 @@ class __$$AppParamStateImplCopyWithImpl<$Res>
   @override
   $Res call({
     Object? isSetStation = null,
+    Object? selectedMultiNumber = null,
+    Object? selectedStationName = null,
   }) {
     return _then(_$AppParamStateImpl(
       isSetStation: null == isSetStation
           ? _value.isSetStation
           : isSetStation // ignore: cast_nullable_to_non_nullable
               as bool,
+      selectedMultiNumber: null == selectedMultiNumber
+          ? _value.selectedMultiNumber
+          : selectedMultiNumber // ignore: cast_nullable_to_non_nullable
+              as int,
+      selectedStationName: null == selectedStationName
+          ? _value.selectedStationName
+          : selectedStationName // ignore: cast_nullable_to_non_nullable
+              as String,
     ));
   }
 }
@@ -92,15 +116,24 @@ class __$$AppParamStateImplCopyWithImpl<$Res>
 /// @nodoc
 
 class _$AppParamStateImpl implements _AppParamState {
-  const _$AppParamStateImpl({this.isSetStation = false});
+  const _$AppParamStateImpl(
+      {this.isSetStation = false,
+      this.selectedMultiNumber = -1,
+      this.selectedStationName = ''});
 
   @override
   @JsonKey()
   final bool isSetStation;
+  @override
+  @JsonKey()
+  final int selectedMultiNumber;
+  @override
+  @JsonKey()
+  final String selectedStationName;
 
   @override
   String toString() {
-    return 'AppParamState(isSetStation: $isSetStation)';
+    return 'AppParamState(isSetStation: $isSetStation, selectedMultiNumber: $selectedMultiNumber, selectedStationName: $selectedStationName)';
   }
 
   @override
@@ -109,11 +142,16 @@ class _$AppParamStateImpl implements _AppParamState {
         (other.runtimeType == runtimeType &&
             other is _$AppParamStateImpl &&
             (identical(other.isSetStation, isSetStation) ||
-                other.isSetStation == isSetStation));
+                other.isSetStation == isSetStation) &&
+            (identical(other.selectedMultiNumber, selectedMultiNumber) ||
+                other.selectedMultiNumber == selectedMultiNumber) &&
+            (identical(other.selectedStationName, selectedStationName) ||
+                other.selectedStationName == selectedStationName));
   }
 
   @override
-  int get hashCode => Object.hash(runtimeType, isSetStation);
+  int get hashCode => Object.hash(
+      runtimeType, isSetStation, selectedMultiNumber, selectedStationName);
 
   @JsonKey(ignore: true)
   @override
@@ -123,10 +161,17 @@ class _$AppParamStateImpl implements _AppParamState {
 }
 
 abstract class _AppParamState implements AppParamState {
-  const factory _AppParamState({final bool isSetStation}) = _$AppParamStateImpl;
+  const factory _AppParamState(
+      {final bool isSetStation,
+      final int selectedMultiNumber,
+      final String selectedStationName}) = _$AppParamStateImpl;
 
   @override
   bool get isSetStation;
+  @override
+  int get selectedMultiNumber;
+  @override
+  String get selectedStationName;
   @override
   @JsonKey(ignore: true)
   _$$AppParamStateImplCopyWith<_$AppParamStateImpl> get copyWith =>

@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
 import 'package:flutter_oritimer/model/tokyo_train_model.dart';
+import 'package:flutter_oritimer/screens/components/multi_goal_display_alert.dart';
+import 'package:flutter_oritimer/screens/parts/oritimer_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -383,46 +385,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
               SizedBox(height: 5),
 
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Text('選択中: ${selected?.stationName ?? "(未選択)"}'),
-                      SizedBox(width: 20),
-                      if (selected != null) ...[
-                        IconButton(
-                          onPressed: () {
-                            final List<int> indices = _getTrainIndicesForStation(selected.stationName);
-                            if (indices.isNotEmpty) {
-                              setState(() => _destinationOccurrenceIndex = 0);
-                              _jumpToIndex(indices[0]);
-                            }
-                          },
-                          icon: Icon(Icons.location_on, color: Colors.greenAccent),
-                          tooltip: '選択駅へジャンプ',
-                        ),
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Text('選択中: ${selected?.stationName ?? "(未選択)"}'),
+                            SizedBox(width: 20),
+                            if (selected != null) ...[
+                              IconButton(
+                                onPressed: () {
+                                  final List<int> indices = _getTrainIndicesForStation(selected.stationName);
+                                  if (indices.isNotEmpty) {
+                                    setState(() => _destinationOccurrenceIndex = 0);
+                                    _jumpToIndex(indices[0]);
+                                  }
+                                },
+                                icon: Icon(Icons.location_on, color: Colors.greenAccent),
+                                tooltip: '選択駅へジャンプ',
+                              ),
 
-                        IconButton(
-                          onPressed: () {
-                            final List<int> indices = _getTrainIndicesForStation(selected.stationName);
-                            if (indices.isEmpty) return;
-                            final int next = (_destinationOccurrenceIndex + 1) % indices.length;
-                            setState(() => _destinationOccurrenceIndex = next);
-                            _jumpToIndex(indices[next]);
-                          },
-                          icon: Icon(Icons.swap_vert, color: Colors.greenAccent),
-                          tooltip: '次の同名駅へ',
+                              IconButton(
+                                onPressed: () {
+                                  final List<int> indices = _getTrainIndicesForStation(selected.stationName);
+                                  if (indices.isEmpty) return;
+                                  final int next = (_destinationOccurrenceIndex + 1) % indices.length;
+                                  setState(() => _destinationOccurrenceIndex = next);
+                                  _jumpToIndex(indices[next]);
+                                },
+                                icon: Icon(Icons.swap_vert, color: Colors.greenAccent),
+                                tooltip: '次の同名駅へ',
+                              ),
+                            ] else ...[
+                              IconButton(
+                                onPressed: null,
+                                icon: const Icon(Icons.check_box_outline_blank, color: Colors.transparent),
+                              ),
+                              IconButton(onPressed: null, icon: const Icon(Icons.swap_vert, color: Colors.transparent)),
+                            ],
+                          ],
                         ),
-                      ] else ...[
-                        IconButton(
-                          onPressed: null,
-                          icon: const Icon(Icons.check_box_outline_blank, color: Colors.transparent),
-                        ),
-                        IconButton(onPressed: null, icon: const Icon(Icons.swap_vert, color: Colors.transparent)),
+                        SizedBox.shrink(),
                       ],
-                    ],
+                    ),
                   ),
-                  SizedBox.shrink(),
+
+                  ElevatedButton(
+                    onPressed: () {
+                      OritimerDialog(context: context, widget: MultiGoalDisplayAlert());
+                    },
+
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
+
+                    child: Text('複数'),
+                  ),
                 ],
               ),
 

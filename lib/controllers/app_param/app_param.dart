@@ -10,7 +10,11 @@ const String _kIsSetStation = 'isSetStation';
 
 @freezed
 class AppParamState with _$AppParamState {
-  const factory AppParamState({@Default(false) bool isSetStation}) = _AppParamState;
+  const factory AppParamState({
+    @Default(false) bool isSetStation,
+    @Default(-1) int selectedMultiNumber,
+    @Default('') String selectedStationName,
+  }) = _AppParamState;
 }
 
 @riverpod
@@ -32,6 +36,7 @@ class AppParam extends _$AppParam {
     _persistFlag(flag);
   }
 
+  ///
   Future<void> _persistFlag(bool flag) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (flag) {
@@ -40,4 +45,10 @@ class AppParam extends _$AppParam {
       await prefs.remove(_kIsSetStation);
     }
   }
+
+  ///
+  void setSelectedMultiNumber({required int number}) => state = state.copyWith(selectedMultiNumber: number);
+
+  ///
+  void setSelectedStationName({required String name}) => state = state.copyWith(selectedStationName: name);
 }

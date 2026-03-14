@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_oritimer/screens/components/multi_goal_setting_alert.dart';
+import 'package:flutter_oritimer/screens/parts/error_dialog.dart';
 import 'package:flutter_oritimer/screens/parts/oritimer_dialog.dart';
 
 class MultiGoalDisplayAlert extends ConsumerStatefulWidget {
@@ -50,10 +51,33 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                     Text('multi goal list'),
 
                     ElevatedButton(
-                      onPressed: () {
-                        appParamNotifier.setSelectedMultiNumber(number: -1);
+                      onPressed: () async {
+                        final Map<int, String> registered = await appParamNotifier.loadAllMultiGoalEntries();
+
+                        if (registered.length >= 10) {
+                          // ignore: always_specify_types
+                          Future.delayed(
+                            Duration.zero,
+                            () => error_dialog(
+                              // ignore: use_build_context_synchronously
+                              context: context,
+                              title: '登録できません。',
+                              content: '目的地は10個までしか登録できません。',
+                            ),
+                          );
+                          return;
+                        }
+
+                        int nextSlot = 0;
+                        while (nextSlot < 10 && registered.containsKey(nextSlot)) {
+                          nextSlot++;
+                        }
+
+                        appParamNotifier.setSelectedMultiNumber(number: nextSlot < 10 ? nextSlot : -1);
                         appParamNotifier.setSelectedStationName(name: '');
 
+                        if (!mounted) return;
+                        // ignore: use_build_context_synchronously
                         OritimerDialog(context: context, widget: const MultiGoalSettingAlert()).then((_) {
                           _loadMultiGoals();
                         });

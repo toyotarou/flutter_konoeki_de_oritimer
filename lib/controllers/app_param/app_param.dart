@@ -41,13 +41,15 @@ class AppParam extends _$AppParam {
   void setSelectedStationName({required String name}) => state = state.copyWith(selectedStationName: name);
 
   /// selectedMultiNumber と selectedStationName の組み合わせを SharedPreferences に保存する
-  Future<void> saveMultiGoalEntry() async {
+  /// 保存できた場合は true、バリデーション失敗の場合は false を返す
+  Future<bool> saveMultiGoalEntry() async {
     final int number = state.selectedMultiNumber;
     final String stationName = state.selectedStationName;
 
-    if (number < 0 || stationName.isEmpty) return;
+    if (number < 0 || stationName.isEmpty) return false;
 
     await SharedPreferencesService.saveMultiGoalEntry(number: number, stationName: stationName);
+    return true;
   }
 
   /// 指定した番号のマルチゴールを読み込む

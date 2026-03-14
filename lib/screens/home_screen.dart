@@ -9,6 +9,7 @@ import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
 import 'package:flutter_oritimer/model/tokyo_train_model.dart';
 import 'package:flutter_oritimer/screens/components/multi_goal_display_alert.dart';
 import 'package:flutter_oritimer/screens/parts/oritimer_dialog.dart';
+import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -43,11 +44,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
   bool _permissionsGranted = false;
 
+  Map<int, String> _multiGoalMap = <int, String>{};
+
   ///
   @override
   void initState() {
     super.initState();
     _initPlugins();
+    _loadMultiGoals();
+  }
+
+  ///
+  Future<void> _loadMultiGoals() async {
+    final Map<int, String> map = await SharedPreferencesService.loadAllMultiGoalEntries();
+    if (mounted) {
+      setState(() => _multiGoalMap = map);
+    }
   }
 
   ///
@@ -254,20 +266,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
           SizedBox(width: 20),
 
-          GestureDetector(
-            onTap: () {
-              appParamNotifier.setIsSetStation(flag: false);
+          if (_multiGoalMap.length >= 2)
+            PopupMenuButton<int>(
+              padding: EdgeInsets.zero,
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.more_vert),
+                  SizedBox(height: 5),
+                  Text('stop', style: TextStyle(fontSize: 10)),
+                ],
+              ),
+              onSelected: (int number) async {
+                await SharedPreferencesService.deleteMultiGoalEntry(number: number);
+                _loadMultiGoals();
+              },
+              itemBuilder: (BuildContext context) {
+                final List<int> sortedKeys = _multiGoalMap.keys.toList()..sort();
+                final int lastKey = sortedKeys.last;
+                return sortedKeys.map((int number) {
+                  return PopupMenuItem<int>(
+                    value: number == lastKey ? number : null,
+                    enabled: number == lastKey,
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(child: Text(_multiGoalMap[number]!)),
+                        if (number == lastKey) const Icon(Icons.close, size: 16),
+                      ],
+                    ),
+                  );
+                }).toList();
+              },
+            )
+          else
+            GestureDetector(
+              onTap: () async {
+                appParamNotifier.setIsSetStation(flag: false);
+                _removeAllGeofences();
 
-              _removeAllGeofences();
-            },
-            child: Column(
-              children: [
-                Icon(Icons.close),
-                SizedBox(height: 5),
-                Text('stop', style: TextStyle(fontSize: 10)),
-              ],
+                // 1件だけ登録されていた場合はそのエントリも削除する
+                if (_multiGoalMap.length == 1) {
+                  final int number = _multiGoalMap.keys.first;
+                  await SharedPreferencesService.deleteMultiGoalEntry(number: number);
+                  _loadMultiGoals();
+                }
+              },
+              child: const Column(
+                children: <Widget>[
+                  Icon(Icons.close),
+                  SizedBox(height: 5),
+                  Text('stop', style: TextStyle(fontSize: 10)),
+                ],
+              ),
             ),
-          ),
 
           SizedBox(width: 20),
         ],
@@ -434,7 +485,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
                   ElevatedButton(
                     onPressed: () {
-                      OritimerDialog(context: context, widget: MultiGoalDisplayAlert());
+                      OritimerDialog(context: context, widget: MultiGoalDisplayAlert()).then((_) {
+                        _loadMultiGoals();
+                      });
                     },
 
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),

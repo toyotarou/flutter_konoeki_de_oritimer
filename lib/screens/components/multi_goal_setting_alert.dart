@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
 import 'package:flutter_oritimer/model/tokyo_train_model.dart';
+import 'package:flutter_oritimer/screens/parts/error_dialog.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class MultiGoalSettingAlert extends ConsumerStatefulWidget {
@@ -15,6 +16,23 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
     with ControllersMixin<MultiGoalSettingAlert> {
   final ItemScrollController _itemScrollController = ItemScrollController();
   final TextEditingController _searchController = TextEditingController();
+
+  Set<int> _registeredSlots = <int>{};
+
+  ///
+  @override
+  void initState() {
+    super.initState();
+    _loadRegisteredSlots();
+  }
+
+  ///
+  Future<void> _loadRegisteredSlots() async {
+    final Map<int, String> map = await appParamNotifier.loadAllMultiGoalEntries();
+    if (mounted) {
+      setState(() => _registeredSlots = map.keys.toSet());
+    }
+  }
 
   ///
   @override
@@ -56,8 +74,26 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
                     Text('multi goal setting'),
 
                     ElevatedButton(
-                      onPressed: () {
-                        appParamNotifier.saveMultiGoalEntry();
+                      onPressed: () async {
+                        final bool saved = await appParamNotifier.saveMultiGoalEntry();
+
+                        if (!saved) {
+                          // ignore: always_specify_types
+                          Future.delayed(
+                            Duration.zero,
+                            () => error_dialog(
+                              // ignore: use_build_context_synchronously
+                              context: context,
+                              title: '登録できません。',
+                              content: '番号と駅を選択してください。',
+                            ),
+                          );
+                          return;
+                        }
+
+                        ///MMM
+                        // ignore: use_build_context_synchronously
+                        if (mounted) Navigator.pop(context);
                       },
 
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
@@ -76,18 +112,24 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: List.generate(10, (index) => index).map((e) {
+                        final bool isRegistered = _registeredSlots.contains(e);
+                        final bool isSelected = appParamState.selectedMultiNumber == e;
+
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 5),
-                          child: GestureDetector(
-                            onTap: () {
-                              appParamNotifier.setSelectedMultiNumber(number: e);
-                            },
-                            child: CircleAvatar(
-                              backgroundColor: (appParamState.selectedMultiNumber == e)
-                                  ? Colors.yellowAccent.withValues(alpha: 0.3)
-                                  : Colors.black.withValues(alpha: 0.3),
+                          child: CircleAvatar(
+                            backgroundColor: isRegistered
+                                ? Colors.red.withValues(alpha: 0.3)
+                                : isSelected
+                                ? Colors.yellowAccent.withValues(alpha: 0.3)
+                                : Colors.black.withValues(alpha: 0.3),
 
-                              child: Text((e + 1).toString(), style: TextStyle(fontSize: 12)),
+                            child: Text(
+                              (e + 1).toString(),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isRegistered ? Colors.white.withValues(alpha: 0.5) : Colors.white,
+                              ),
                             ),
                           ),
                         );

@@ -18,6 +18,7 @@ class MultiGoalDisplayAlert extends ConsumerStatefulWidget {
 class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
     with ControllersMixin<MultiGoalDisplayAlert> {
   Map<int, String> _multiGoalMap = <int, String>{};
+  bool _loadedFromPattern = false;
 
   ///
   @override
@@ -57,7 +58,10 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                       children: [
                         ElevatedButton(
                           onPressed: () {
-                            OritimerDialog(context: context, widget: PatternRouteDisplayAlert()).then((_) {
+                            OritimerDialog(
+                              context: context,
+                              widget: PatternRouteDisplayAlert(onPatternApplied: () => _loadedFromPattern = true),
+                            ).then((_) {
                               _loadMultiGoals();
                             });
                           },
@@ -98,6 +102,7 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                             if (!mounted) return;
                             // ignore: use_build_context_synchronously
                             OritimerDialog(context: context, widget: const MultiGoalSettingAlert()).then((_) {
+                              setState(() => _loadedFromPattern = false);
                               _loadMultiGoals();
                             });
                           },
@@ -118,7 +123,7 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                   children: [
                     SizedBox.shrink(),
 
-                    if (_multiGoalMap.length >= 2) ...[
+                    if (_multiGoalMap.length >= 2 && !_loadedFromPattern) ...[
                       TextButton(
                         onPressed: () async {
                           final List<int> sortedKeys = _multiGoalMap.keys.toList()..sort();

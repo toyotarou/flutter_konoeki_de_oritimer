@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
 
 class PatternRouteDisplayAlert extends ConsumerStatefulWidget {
-  const PatternRouteDisplayAlert({super.key});
+  const PatternRouteDisplayAlert({super.key, this.onPatternApplied});
+
+  final VoidCallback? onPatternApplied;
 
   @override
   ConsumerState<PatternRouteDisplayAlert> createState() => _PatternRouteDisplayAlertState();
@@ -108,6 +110,7 @@ class _PatternRouteDisplayAlertState extends ConsumerState<PatternRouteDisplayAl
                         }
 
                         if (!mounted) return;
+                        widget.onPatternApplied?.call();
                         // ignore: use_build_context_synchronously
                         Navigator.pop(context);
                       },
@@ -172,7 +175,20 @@ class _PatternRouteDisplayAlertState extends ConsumerState<PatternRouteDisplayAl
 
               const SizedBox(width: 16),
 
-              IconButton(onPressed: () {}, icon: Icon(Icons.delete)),
+              IconButton(
+                onPressed: () async {
+                  await SharedPreferencesService.deleteRoutePattern(slot: slot);
+
+                  // 削除したパターンが選択中だった場合はハイライトをクリア
+                  if (appParamState.selectedPatternDispString == dispString) {
+                    appParamNotifier.setSelectedPatternDispString(str: '');
+                    setState(() => _selectedStations = null);
+                  }
+
+                  _loadPatterns();
+                },
+                icon: const Icon(Icons.delete),
+              ),
             ],
           ),
         );

@@ -1,18 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
 import 'package:flutter_oritimer/model/tokyo_train_model.dart';
+import 'package:flutter_oritimer/screens/components/multi_goal_display_alert.dart';
+import 'package:flutter_oritimer/screens/parts/oritimer_dialog.dart';
+import 'package:flutter_oritimer/utility/functions.dart';
+import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:vibration/vibration.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -41,11 +42,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
   bool _permissionsGranted = false;
 
+  Map<int, String> _multiGoalMap = <int, String>{};
+
   ///
   @override
   void initState() {
     super.initState();
     _initPlugins();
+    _loadMultiGoals();
+  }
+
+  ///
+  Future<void> _loadMultiGoals() async {
+    final Map<int, String> map = await SharedPreferencesService.loadAllMultiGoalEntries();
+    if (mounted) {
+      setState(() => _multiGoalMap = map);
+    }
   }
 
   ///
@@ -71,6 +83,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
       try {
         final Map<String, dynamic> map = jsonDecode(stationJson) as Map<String, dynamic>;
         setState(() => _selected = TokyoStationModel.fromJson(map));
+      } catch (_) {}
+    }
+
+    // マルチゴールのジオフェンスを復元する
+    await _restoreMultiGoalGeofences();
+  }
+
+  ///
+  Future<void> _restoreMultiGoalGeofences() async {
+    final Map<int, String> entries = await SharedPreferencesService.loadAllMultiGoalEntries();
+
+    for (final MapEntry<int, String> entry in entries.entries) {
+      final ({double? lat, double? lng}) location = await SharedPreferencesService.loadMultiGoalLocation(
+        number: entry.key,
+      );
+
+      if (location.lat == null || location.lng == null) continue;
+
+      final Geofence zone = Geofence(
+        id: 'multiGoal_${entry.key}',
+        location: Location(latitude: location.lat!, longitude: location.lng!),
+        radiusMeters: 1000,
+        triggers: <GeofenceEvent>{GeofenceEvent.enter},
+        iosSettings: const IosGeofenceSettings(initialTrigger: true),
+        androidSettings: const AndroidGeofenceSettings(
+          initialTriggers: <GeofenceEvent>{GeofenceEvent.enter},
+          expiration: Duration(days: 7),
+          loiteringDelay: Duration(minutes: 1),
+          notificationResponsiveness: Duration(seconds: 10),
+        ),
+      );
+      try {
+        await NativeGeofenceManager.instance.createGeofence(zone, geofenceCallback);
       } catch (_) {}
     }
   }
@@ -164,15 +209,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   }
 
   ///
-  List<int> _getTrainIndicesForStation(String stationName) {
-    final List<int> indices = <int>[];
-    for (int i = 0; i < widget.tokyoTrainList.length; i++) {
-      if (widget.tokyoTrainList[i].station.any((TokyoStationModel s) => s.stationName == stationName)) {
-        indices.add(i);
-      }
-    }
-    return indices;
-  }
+  List<int> _getTrainIndicesForStation(String stationName) =>
+      getTrainIndicesForStation(stationName: stationName, trainList: widget.tokyoTrainList);
 
   // ///
   // Future<void> _showTestNotification() async {
@@ -199,6 +237,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   @override
   Widget build(BuildContext context) {
     final TokyoStationModel? selected = _selected;
+    final String? effectiveStationName =
+        selected?.stationName ?? (_multiGoalMap.length == 1 ? _multiGoalMap.values.first : null);
 
     // 路線名 -> リスト内インデックス
     final Map<String, int> firstIndexByTrainName = <String, int>{};
@@ -237,13 +277,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
             },
             child: Column(
               children: [
-                Icon(Icons.remove_red_eye, color: (appParamState.isSetStation) ? Colors.yellowAccent : Colors.white),
+                Icon(
+                  Icons.remove_red_eye,
+                  color: (appParamState.isSetStation || _multiGoalMap.isNotEmpty) ? Colors.yellowAccent : Colors.white,
+                ),
                 SizedBox(height: 5),
                 Text(
                   'setting',
                   style: TextStyle(
                     fontSize: 10,
-                    color: (appParamState.isSetStation) ? Colors.yellowAccent : Colors.white,
+                    color: (appParamState.isSetStation || _multiGoalMap.isNotEmpty)
+                        ? Colors.yellowAccent
+                        : Colors.white,
                   ),
                 ),
               ],
@@ -252,20 +297,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
           SizedBox(width: 20),
 
-          GestureDetector(
-            onTap: () {
-              appParamNotifier.setIsSetStation(flag: false);
+          if (_multiGoalMap.length >= 2)
+            PopupMenuButton<int>(
+              padding: EdgeInsets.zero,
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.more_vert),
+                  SizedBox(height: 5),
+                  Text('stop', style: TextStyle(fontSize: 10)),
+                ],
+              ),
+              onSelected: (int number) async {
+                // ジオフェンス削除
+                try {
+                  await NativeGeofenceManager.instance.removeGeofenceById('multiGoal_$number');
+                } catch (_) {}
 
-              _removeAllGeofences();
-            },
-            child: Column(
-              children: [
-                Icon(Icons.close),
-                SizedBox(height: 5),
-                Text('stop', style: TextStyle(fontSize: 10)),
-              ],
+                // バイブレーション停止（Android のみ）
+                if (Platform.isAndroid) {
+                  await Vibration.cancel();
+                }
+
+                await SharedPreferencesService.deleteMultiGoalEntry(number: number);
+                _loadMultiGoals();
+              },
+              itemBuilder: (BuildContext context) {
+                final List<int> sortedKeys = _multiGoalMap.keys.toList()..sort();
+                return sortedKeys.map((int number) {
+                  return PopupMenuItem<int>(
+                    value: number,
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(child: Text(_multiGoalMap[number]!)),
+                        const Icon(Icons.close, size: 16),
+                      ],
+                    ),
+                  );
+                }).toList();
+              },
+            )
+          else
+            GestureDetector(
+              onTap: () async {
+                appParamNotifier.setIsSetStation(flag: false);
+                _removeAllGeofences();
+
+                // 1件だけ登録されていた場合はそのエントリも削除する
+                if (_multiGoalMap.length == 1) {
+                  final int number = _multiGoalMap.keys.first;
+                  await SharedPreferencesService.deleteMultiGoalEntry(number: number);
+                  _loadMultiGoals();
+                }
+              },
+              child: const Column(
+                children: <Widget>[
+                  Icon(Icons.close),
+                  SizedBox(height: 5),
+                  Text('stop', style: TextStyle(fontSize: 10)),
+                ],
+              ),
             ),
-          ),
 
           SizedBox(width: 20),
         ],
@@ -383,46 +475,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
               SizedBox(height: 5),
 
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Text('選択中: ${selected?.stationName ?? "(未選択)"}'),
-                      SizedBox(width: 20),
-                      if (selected != null) ...[
-                        IconButton(
-                          onPressed: () {
-                            final List<int> indices = _getTrainIndicesForStation(selected.stationName);
-                            if (indices.isNotEmpty) {
-                              setState(() => _destinationOccurrenceIndex = 0);
-                              _jumpToIndex(indices[0]);
-                            }
-                          },
-                          icon: Icon(Icons.location_on, color: Colors.greenAccent),
-                          tooltip: '選択駅へジャンプ',
-                        ),
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Text('選択中: ${effectiveStationName ?? (_multiGoalMap.length > 1 ? "複数" : "(未選択)")}'),
+                            SizedBox(width: 20),
+                            if (effectiveStationName != null) ...[
+                              IconButton(
+                                onPressed: () {
+                                  final List<int> indices = _getTrainIndicesForStation(effectiveStationName);
+                                  if (indices.isNotEmpty) {
+                                    setState(() => _destinationOccurrenceIndex = 0);
+                                    _jumpToIndex(indices[0]);
+                                  }
+                                },
+                                icon: Icon(Icons.location_on, color: Colors.greenAccent),
+                                tooltip: '選択駅へジャンプ',
+                              ),
 
-                        IconButton(
-                          onPressed: () {
-                            final List<int> indices = _getTrainIndicesForStation(selected.stationName);
-                            if (indices.isEmpty) return;
-                            final int next = (_destinationOccurrenceIndex + 1) % indices.length;
-                            setState(() => _destinationOccurrenceIndex = next);
-                            _jumpToIndex(indices[next]);
-                          },
-                          icon: Icon(Icons.swap_vert, color: Colors.greenAccent),
-                          tooltip: '次の同名駅へ',
+                              IconButton(
+                                onPressed: () {
+                                  final List<int> indices = _getTrainIndicesForStation(effectiveStationName);
+                                  if (indices.isEmpty) return;
+                                  final int next = (_destinationOccurrenceIndex + 1) % indices.length;
+                                  setState(() => _destinationOccurrenceIndex = next);
+                                  _jumpToIndex(indices[next]);
+                                },
+                                icon: Icon(Icons.swap_vert, color: Colors.greenAccent),
+                                tooltip: '次の同名駅へ',
+                              ),
+                            ] else ...[
+                              IconButton(
+                                onPressed: null,
+                                icon: const Icon(Icons.check_box_outline_blank, color: Colors.transparent),
+                              ),
+                              IconButton(onPressed: null, icon: const Icon(Icons.swap_vert, color: Colors.transparent)),
+                            ],
+                          ],
                         ),
-                      ] else ...[
-                        IconButton(
-                          onPressed: null,
-                          icon: const Icon(Icons.check_box_outline_blank, color: Colors.transparent),
-                        ),
-                        IconButton(onPressed: null, icon: const Icon(Icons.swap_vert, color: Colors.transparent)),
+                        SizedBox.shrink(),
                       ],
-                    ],
+                    ),
                   ),
-                  SizedBox.shrink(),
+
+                  ElevatedButton(
+                    onPressed: () {
+                      OritimerDialog(context: context, widget: MultiGoalDisplayAlert()).then((_) {
+                        _loadMultiGoals();
+                      });
+                    },
+
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
+
+                    child: Text('複数'),
+                  ),
                 ],
               ),
 
@@ -517,66 +627,4 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   }
 }
 
-/// =======================
-/// Geofence コールバック（トップレベル必須）
-/// =======================
-@pragma('vm:entry-point')
-Future<void> geofenceCallback(GeofenceCallbackParams params) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  try {
-    DartPluginRegistrant.ensureInitialized();
-  } catch (_) {}
-
-  final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
-
-  const InitializationSettings initSettings = InitializationSettings(
-    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    iOS: DarwinInitializationSettings(),
-  );
-
-  await notifications.initialize(settings: initSettings);
-
-  // 音量を最大に上げる（Android のみ・音楽ストリーム）
-  // システム UI のスライダーを出さずに音量を変更する
-  if (Platform.isAndroid) {
-    try {
-      await FlutterVolumeController.updateShowSystemUI(false);
-      await FlutterVolumeController.setVolume(1.0, stream: AudioStream.music);
-    } catch (_) {}
-  }
-
-  final String stationNames = params.geofences.map((ActiveGeofence g) => g.id).join(', ');
-
-  final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-    'geofence',
-    'Geofence',
-    channelDescription: 'Notify when entering the selected station area',
-    importance: Importance.max,
-    priority: Priority.high,
-    vibrationPattern: Int64List.fromList(<int>[0, 600, 100, 600, 100, 600, 100, 1000]),
-  );
-
-  const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
-
-  final NotificationDetails details = NotificationDetails(android: androidDetails, iOS: iosDetails);
-
-  await notifications.show(
-    id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-    title: '降りる駅アラーム',
-    body: stationNames,
-    notificationDetails: details,
-  );
-
-  // ループバイブレーション開始（Android のみ）
-  // repeat: 0 → パターンの先頭から繰り返し → Vibration.cancel() で確実に停止
-  if (Platform.isAndroid) {
-    final bool hasVibrator = await Vibration.hasVibrator();
-    if (hasVibrator == true) {
-      await Vibration.vibrate(
-        pattern: <int>[0, 600, 100, 600, 100, 600, 100, 1000],
-        intensities: <int>[0, 255, 0, 255, 0, 255, 0, 255],
-        repeat: 0,
-      );
-    }
-  }
-}
+// geofenceCallback は lib/utility/functions.dart で定義

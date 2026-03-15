@@ -43,6 +43,7 @@
 | 降車通知 | 圏内進入時にプッシュ通知とループバイブレーション（最大強度・ユーザー停止まで継続）で通知する |
 | 監視状態の永続化 | SharedPreferencesに監視ON/OFFを保存し、アプリ再起動後も状態を復元する |
 | パーミッション管理 | 位置情報（常に許可）と通知パーミッションを順次要求する |
+| 複数目的地登録（マルチゴール） | 最大10件の目的地を登録し、それぞれのジオフェンスを同時に監視する。SharedPreferencesに駅名・座標を保存し、再起動後に自動復元する |
 
 ### 1.3 動作環境
 
@@ -87,7 +88,8 @@
 │  permission_handler (パーミッション要求)                        │
 ├──────────────────────────────────────────────────────────────┤
 │                      永続化層                                   │
-│  shared_preferences (監視状態の端末保存・復元)                  │
+│  shared_preferences (監視状態・マルチゴールの端末保存・復元)      │
+│  SharedPreferencesService (永続化操作をまとめたユーティリティ)   │
 ├──────────────────────────────────────────────────────────────┤
 │                     スクロール制御層                             │
 │  scrollable_positioned_list (インデックス指定スクロール)          │
@@ -130,8 +132,16 @@
 ```
 lib/
 ├── main.dart                         … アプリのエントリーポイント
+├── const/
+│   └── const.dart                    … アプリ全体の定数（バイブレーションパターン等）
 ├── screens/
-│   └── home_screen.dart              … ホーム画面（唯一のメイン画面）
+│   ├── home_screen.dart              … ホーム画面（唯一のメイン画面）
+│   ├── components/
+│   │   ├── multi_goal_display_alert.dart  … マルチゴール一覧ダイアログ（S-03）
+│   │   └── multi_goal_setting_alert.dart  … マルチゴール設定ダイアログ（S-04）
+│   └── parts/
+│       ├── error_dialog.dart         … エラーダイアログ
+│       └── oritimer_dialog.dart      … フルスクリーンダイアログ共通ラッパー
 ├── model/
 │   └── tokyo_train_model.dart        … 路線・駅のデータモデル（freezed）
 ├── controllers/
@@ -152,7 +162,9 @@ lib/
 ├── extensions/
 │   └── extensions.dart               … DateTime, String, BuildContext の拡張関数
 ├── utility/
-│   └── utility.dart                  … Utilityクラス（エラー表示等）
+│   ├── utility.dart                  … Utilityクラス（エラー表示等）
+│   ├── functions.dart                … トップレベル関数（geofenceCallback・getTrainIndicesForStation）
+│   └── shared_preferences_service.dart  … SharedPreferences操作をまとめたユーティリティ
 └── assets/
     ├── images/
     │   ├── ic_launcher.png           … アプリアイコン
@@ -164,12 +176,15 @@ lib/
 
 | ディレクトリ | 置くもの | 置かないもの |
 |---|---|---|
+| `const/` | アプリ全体で共有する定数（バイブレーションパターン等） | クラス定義、ロジック |
 | `screens/` | ページ全体を構成するWidget | 再利用する部品Widget |
+| `screens/components/` | ダイアログなどの画面コンポーネント（複数画面から利用されるWidget） | ページ全体の画面 |
+| `screens/parts/` | ダイアログ共通ラッパーなどの小部品 | ページ全体の画面 |
 | `model/` | freezedモデルのみ | UI関連コード、ビジネスロジック |
 | `controllers/` | `@riverpod` Provider、API通信ロジック | Widget |
 | `data/http/` | HTTPクライアント、APIパス定義 | ビジネスロジック |
 | `extensions/` | 既存クラスへの拡張関数 | 新規クラス定義 |
-| `utility/` | 汎用ユーティリティ（エラー表示等） | 特定画面専用のロジック |
+| `utility/` | 汎用ユーティリティ（エラー表示、SharedPreferences操作、トップレベル関数等） | 特定画面専用のロジック |
 
 ---
 
@@ -240,6 +255,8 @@ class TokyoTrainModel with _$TokyoTrainModel {
 | フィールド名 | Dart型 | 初期値 | 説明 |
 |---|---|---|---|
 | isSetStation | `bool` | `false` | ジオフェンス監視中かどうかのフラグ（SharedPreferencesに永続化） |
+| selectedMultiNumber | `int` | `-1` | マルチゴール設定ダイアログで選択中のスロット番号（0〜9）。未選択時は -1 |
+| selectedStationName | `String` | `''` | マルチゴール設定ダイアログで選択中の駅名 |
 
 **freezedクラス定義（概要）:**
 
@@ -248,6 +265,8 @@ class TokyoTrainModel with _$TokyoTrainModel {
 class AppParamState with _$AppParamState {
   const factory AppParamState({
     @Default(false) bool isSetStation,
+    @Default(-1) int selectedMultiNumber,  // 未選択状態を -1 で表現
+    @Default('') String selectedStationName,
   }) = _AppParamState;
 }
 ```
@@ -260,13 +279,18 @@ class AppParamState with _$AppParamState {
 
 > **補足：** 停止時は `setBool(false)` ではなく `remove()` でキーを削除する設計にしている。`getBool()` が `null` を返したときに `?? false` でデフォルト値を適用するためである。
 
-**SharedPreferencesキー（HomeScreen管理分）:**
+**SharedPreferencesキー（HomeScreen / SharedPreferencesService 管理分）:**
 
 | キー名 | 型 | 保存タイミング | 削除タイミング |
 |---|---|---|---|
 | `'selectedStation'` | `String`（JSON） | 駅タップ時（`_saveSelectedStation()`） | 停止ボタン（×）タップ時（`_removeAllGeofences()`内） |
+| `'multiGoal_N'` | `String` | マルチゴール登録時 | マルチゴール削除時 |
+| `'multiGoalLat_N'` | `double` | マルチゴール登録時 | マルチゴール削除時 |
+| `'multiGoalLng_N'` | `double` | マルチゴール登録時 | マルチゴール削除時 |
 
-> **補足：** 選択駅は `TokyoStationModel.toJson()` で JSON 文字列に変換して保存し、復元時は `TokyoStationModel.fromJson()` でパースする。監視状態（`isSetStation`）は `AppParam` が管理するのに対し、選択駅は `HomeScreen` が直接 SharedPreferences を扱う設計にしている。これは選択駅が画面ローカルの状態であり、Riverpod の状態に含める必要がないためである。
+> **補足：** `N` は 0〜9 のスロット番号。`multiGoal_N` が駅名、`multiGoalLat_N` / `multiGoalLng_N` が座標。座標はアプリ再起動後のジオフェンス復元に使用する。`SharedPreferencesService` クラス（`utility/shared_preferences_service.dart`）がこれらのキーの読み書き・削除をすべて担当する。
+
+> **補足：** 選択駅は `TokyoStationModel.toJson()` で JSON 文字列に変換して保存し、復元時は `TokyoStationModel.fromJson()` でパースする。監視状態（`isSetStation`）は `AppParam` が管理するのに対し、選択駅・マルチゴール情報は `SharedPreferencesService` 経由で扱う設計にしている。
 
 ### 4.4 TokyoTrainState（路線・駅データ状態）
 
@@ -306,7 +330,7 @@ class AppParamState with _$AppParamState {
 ```
 種別:        NotifierProvider（ユーザー操作で値が変わる）
 返却型:      AppParamState
-初期値:      AppParamState() → isSetStation: false
+初期値:      AppParamState() → isSetStation: false, selectedMultiNumber: -1, selectedStationName: ''
 Notifier:   AppParam
 
 操作メソッド:
@@ -321,7 +345,25 @@ Notifier:   AppParam
     → 値が存在すれば isSetStation: true として state を更新する
     → 値がなければ（null）isSetStation: false のまま（デフォルト）
 
+  setSelectedMultiNumber({required int number})
+    → selectedMultiNumber を更新する（マルチゴール設定ダイアログで次の空きスロットを設定）
+
+  setSelectedStationName({required String name})
+    → selectedStationName を更新する（マルチゴール設定ダイアログで駅選択時）
+
+  saveMultiGoalEntry() → bool
+    → selectedMultiNumber と selectedStationName が有効な場合、SharedPreferencesService 経由で保存する
+    → 保存成功時: true を返す。未選択の場合: false を返す
+
+  deleteMultiGoalEntry({required int number})
+    → SharedPreferencesService.deleteMultiGoalEntry() を呼び出してエントリを削除する
+
+  loadAllMultiGoalEntries() → Map<int, String>
+    → SharedPreferencesService.loadAllMultiGoalEntries() を呼び出して全エントリを返す
+
 使用箇所:    HomeScreen（ジオフェンス監視状態の管理・表示・復元）
+            MultiGoalDisplayAlert（マルチゴール一覧・削除・新規設定ダイアログ起動）
+            MultiGoalSettingAlert（マルチゴール設定・駅選択）
 ```
 
 #### tokyoTrainProvider
@@ -352,14 +394,15 @@ Notifier:   TokyoTrain
 
 ```dart
 // 全Widgetで共通して使えるProviderアクセスのMixin
-mixin ControllersMixin on ConsumerWidget {
+// ConsumerStatefulWidget にも対応（on ConsumerState or ConsumerWidget）
+mixin ControllersMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   // AppParam
-  AppParamState appParamState(WidgetRef ref)  → ref.watch(appParamProvider)
-  AppParam appParamNotifier(WidgetRef ref)     → ref.read(appParamProvider.notifier)
+  AppParamState get appParamState   → ref.watch(appParamProvider)
+  AppParam get appParamNotifier     → ref.read(appParamProvider.notifier)
 
   // TokyoTrain
-  TokyoTrainState tokyoTrainState(WidgetRef ref)  → ref.watch(tokyoTrainProvider)
-  TokyoTrain tokyoTrainNotifier(WidgetRef ref)     → ref.read(tokyoTrainProvider.notifier)
+  TokyoTrainState get tokyoTrainState   → ref.watch(tokyoTrainProvider)
+  TokyoTrain get tokyoTrainNotifier     → ref.read(tokyoTrainProvider.notifier)
 }
 ```
 
@@ -400,22 +443,24 @@ MyApp (StatelessWidget):
 
 ### 6.2 ホーム画面 (HomeScreen)
 
-**Widgetの種別:** HookConsumerWidget（with ControllersMixin）
+**Widgetの種別:** ConsumerStatefulWidget（with ControllersMixin）
 
 **ローカル状態・コントローラー:**
-- `useState<TokyoStationModel?>(_selectedStation)` — 選択中の駅情報
-- `useState<bool>(_isPermissionGranted)` — パーミッション付与状態
+- `TokyoStationModel? _selected` — 選択中の駅情報
+- `bool _permissionsGranted` — パーミッション付与状態
 - `int _destinationOccurrenceIndex` — 同名駅循環ジャンプで現在表示中の路線インデックス（駅選択時に 0 リセット）
+- `Map<int, String> _multiGoalMap` — 登録済みマルチゴールのスロット番号→駅名マップ
 - `ItemScrollController _itemScrollController` — インデックス指定スクロール用（scrollable_positioned_list）
 - `TextEditingController _searchController` — 検索フォームのテキスト管理
 
-**初期化処理（useEffect）:**
-- `_initPlugins()` を呼び出す:
+**初期化処理（initState）:**
+- `_initPlugins()` と `_loadMultiGoals()` を呼び出す:
   1. FlutterLocalNotificationsPlugin の初期化
   2. NativeGeofenceManager の初期化
-  3. パーミッション状態の確認 → `_isPermissionGranted` を更新
+  3. パーミッション状態の確認 → `_permissionsGranted` を更新
   4. `appParamNotifier.loadFromPrefs()` → SharedPreferences から監視状態（`isSetStation`）を復元する
   5. SharedPreferences から `'selectedStation'` を読み込み → `TokyoStationModel.fromJson()` でパース → `setState(() => _selected = station)` で復元する
+  6. `_restoreMultiGoalGeofences()` → SharedPreferencesService から全マルチゴールエントリと座標を読み込み、ジオフェンスを再登録する
 
 **画面レイアウト:**
 
@@ -447,33 +492,71 @@ MyApp (StatelessWidget):
 
 **AppBarボタンの実装仕様:**
 
-| ボタン | アイコン | 色の条件 | onPressed の処理 |
-|---|---|---|---|
-| パーミッション要求 | `Icons.lock` | `_isPermissionGranted.value == true` → `Colors.yellow`、それ以外 → デフォルト | `_requestPermissions()` を呼び出す |
-| 監視開始 | `Icons.remove_red_eye` | `appParamState.isSetStation == true` → `Colors.yellow`、それ以外 → デフォルト | `_registerSelectedStation()` を呼び出す |
-| 監視停止 | `Icons.close` | 常にデフォルト | `_removeAllGeofences()` を呼び出す（ジオフェンス削除・バイブレーション停止・選択駅の SharedPreferences 削除・`_selected = null`）、`setIsSetStation(flag: false)` で状態を更新 |
+| ボタン | アイコン | 表示条件 | 色の条件 | onPressed の処理 |
+|---|---|---|---|---|
+| パーミッション要求 | `Icons.security` | 常時 | `_permissionsGranted == true` → `Colors.yellowAccent`、それ以外 → デフォルト | `_requestPermissions()` を呼び出す |
+| 監視開始 | `Icons.remove_red_eye` | 常時 | `appParamState.isSetStation == true` **または `_multiGoalMap.isNotEmpty`** → `Colors.yellowAccent`、それ以外 → デフォルト | `_registerSelectedStation()` を呼び出す |
+| 監視停止（×） | `Icons.close` | `_multiGoalMap.length <= 1` | 常にデフォルト | `_removeAllGeofences()` を呼び出す（全ジオフェンス削除・バイブレーション停止・選択駅SharedPreferences削除・`_selected = null`）。`_multiGoalMap.length == 1` の場合はそのエントリも `SharedPreferencesService.deleteMultiGoalEntry()` で削除し `_loadMultiGoals()` を呼ぶ |
+| 監視停止（メニュー） | `Icons.more_vert` | `_multiGoalMap.length >= 2` | 常にデフォルト | `PopupMenuButton` を表示。**全ての行**に × アイコンを表示（`value: number`、`enabled` 制限なし）。選択時に `removeGeofenceById('multiGoal_$number')` → `Vibration.cancel()`（Android のみ） → `SharedPreferencesService.deleteMultiGoalEntry()` → `_loadMultiGoals()` |
 
 **現在の選択駅表示:**
 
 ```dart
 // 表示内容
-駅名:     _selectedStation.value?.stationName ?? '(未選択)'
+駅名:     _selected?.stationName ?? '(未選択)'
 監視状態: appParamState.isSetStation == true の場合のみ「★ 監視中」を表示
+
+// 「複数」ボタン（ホーム画面のbody Row内）
+ElevatedButton(
+  onPressed: () {
+    OritimerDialog(context: context, widget: MultiGoalDisplayAlert()).then((_) {
+      _loadMultiGoals();  // ダイアログを閉じた後に一覧を更新
+    });
+  },
+  child: Text('複数'),
+)
+```
+
+**マルチゴール復元処理 `_restoreMultiGoalGeofences()`:**
+
+```dart
+Future<void> _restoreMultiGoalGeofences() async {
+  final Map<int, String> entries = await SharedPreferencesService.loadAllMultiGoalEntries();
+
+  for (final MapEntry<int, String> entry in entries.entries) {
+    final ({double? lat, double? lng}) location =
+        await SharedPreferencesService.loadMultiGoalLocation(number: entry.key);
+
+    if (location.lat == null || location.lng == null) continue;
+
+    final Geofence zone = Geofence(
+      id: 'multiGoal_${entry.key}',
+      location: Location(latitude: location.lat!, longitude: location.lng!),
+      radiusMeters: 1000,
+      triggers: {GeofenceEvent.enter},
+      iosSettings: IosGeofenceSettings(initialTrigger: true),
+      androidSettings: AndroidGeofenceSettings(
+        initialTriggers: {GeofenceEvent.enter},
+        expiration: Duration(days: 7),
+        loiteringDelay: Duration(minutes: 1),
+        notificationResponsiveness: Duration(seconds: 10),
+      ),
+    );
+    try {
+      await NativeGeofenceManager.instance.createGeofence(zone, geofenceCallback);
+    } catch (_) {}
+  }
+}
 ```
 
 **選択駅ジャンプ / 同名駅循環ジャンプの実装仕様（F-12 / F-13）:**
 
 ```dart
 // 選択駅名を含む全路線インデックスを返す
-List<int> _getTrainIndicesForStation(String stationName) {
-  final List<int> indices = <int>[];
-  for (int i = 0; i < widget.tokyoTrainList.length; i++) {
-    if (widget.tokyoTrainList[i].station.any((s) => s.stationName == stationName)) {
-      indices.add(i);
-    }
-  }
-  return indices;
-}
+// 実体は lib/utility/functions.dart の getTrainIndicesForStation() に定義
+// HomeScreen 内では以下のラッパーを通して呼び出す
+List<int> _getTrainIndicesForStation(String stationName) =>
+    getTrainIndicesForStation(stationName: stationName, trainList: widget.tokyoTrainList);
 ```
 
 選択駅ジャンプボタン（📍 / `Icons.location_on`）の処理:
@@ -604,6 +687,8 @@ Widget: ScrollablePositionedList.builder（scrollable_positioned_list）
 ### 6.3 ジオフェンスコールバック（トップレベル関数）
 
 > **補足：** Flutterでバックグラウンドから関数を呼び出す場合、トップレベル関数（classの外）として定義する必要がある。これはDartのアイソレート（スレッド）の仕組みによる制約。
+>
+> **ファイル:** `lib/utility/functions.dart`（`home_screen.dart` から抽出済み）。バイブレーションパターンは `lib/const/const.dart` の `kVibrationPattern` / `kVibrationIntensities` 定数を使用する。
 
 ```dart
 @pragma('vm:entry-point')
@@ -656,6 +741,8 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
 ```
 
 **バイブレーションパターン（v1.1以降）:**
+
+> **定数定義場所:** `lib/const/const.dart` の `kVibrationPattern` / `kVibrationIntensities`。`geofenceCallback` 内で直接リテラルを書かず、これらの定数を参照する。
 
 | インデックス | 値(ms) | 強度 (0-255) | 意味 |
 |---|---|---|---|
@@ -722,6 +809,115 @@ onTap: () {
   _saveSelectedStation(station);        // SharedPreferences に非同期保存
 }
 ```
+
+### 6.4 マルチゴール一覧ダイアログ（MultiGoalDisplayAlert）
+
+**ファイル:** `lib/screens/components/multi_goal_display_alert.dart`
+**Widgetの種別:** ConsumerStatefulWidget（with ControllersMixin）
+
+**ローカル状態:**
+- `Map<int, String> _multiGoalMap` — スロット番号→駅名。initState で `appParamNotifier.loadAllMultiGoalEntries()` から読み込む
+
+**画面構成:**
+
+```
+┌────────────────────────────────────────┐
+│  multi goal list              [設定]   │  ← 設定ボタンで MultiGoalSettingAlert を開く
+│ ─────────────────────────────────────  │
+│  ① 渋谷駅                              │
+│  ② 品川駅                              │
+│  ③ 新宿駅                  [🗑]        │  ← 最後のゴール（最大スロット番号）のみ
+└────────────────────────────────────────┘
+```
+
+**設定ボタンの処理:**
+1. `appParamNotifier.loadAllMultiGoalEntries()` で現在の登録件数を確認する
+2. 10件以上の場合は `error_dialog` を表示して終了する
+3. 空きスロット番号（0〜9 で `registered.containsKey(nextSlot)` が false の最小値）を求める
+4. `appParamNotifier.setSelectedMultiNumber(number: nextSlot)` と `setSelectedStationName(name: '')` を呼ぶ
+5. `OritimerDialog` で `MultiGoalSettingAlert` を表示する。閉じたら `_loadMultiGoals()` を呼ぶ
+
+**削除ボタンの処理（最後のゴールのみ表示）:**
+1. `NativeGeofenceManager.instance.removeGeofenceById('multiGoal_$number')` でジオフェンスを削除する
+2. `appParamNotifier.deleteMultiGoalEntry(number: number)` でエントリを削除する
+3. `_loadMultiGoals()` で一覧を更新する
+
+### 6.5 マルチゴール設定ダイアログ（MultiGoalSettingAlert）
+
+**ファイル:** `lib/screens/components/multi_goal_setting_alert.dart`
+**Widgetの種別:** ConsumerStatefulWidget（with ControllersMixin）
+
+**ローカル状態:**
+- `Set<int> _registeredSlots` — 登録済みスロット番号のセット。initState で読み込む
+- `ItemScrollController _itemScrollController` — 路線リストのスクロール用
+- `TextEditingController _searchController` — 駅名検索フォーム用
+
+**画面構成:**
+
+```
+┌────────────────────────────────────────┐
+│  multi goal setting          [設定]    │  ← 設定ボタンで保存・ジオフェンス登録
+│ ─────────────────────────────────────  │
+│  [1][2][3][4][5][6][7][8][9][10]       │  ← 赤=登録済み 黄=選択中スロット
+│ ─────────────────────────────────────  │
+│  [ 駅名を検索...     [×] ] [検索]      │
+│ ─────────────────────────────────────  │
+│  ┌─ 山手線 ─────────────────────────┐  │
+│  │  ○  東京駅  ● 渋谷駅（選択中）  │  │
+│  └──────────────────────────────────┘  │
+└────────────────────────────────────────┘
+```
+
+**スロット番号の表示ルール:**
+- 登録済み（`_registeredSlots.contains(e)`）→ 赤背景（`Colors.red.withValues(alpha: 0.3)`）・選択不可
+- 選択中（`appParamState.selectedMultiNumber == e`）→ 黄背景（`Colors.yellowAccent.withValues(alpha: 0.3)`）
+- それ以外 → 黒背景（`Colors.black.withValues(alpha: 0.3)`）
+
+**設定ボタンの処理:**
+1. `appParamNotifier.saveMultiGoalEntry()` を呼び出す。`false` が返ったら `error_dialog` を表示して終了する
+2. `appParamState.selectedStationName` で駅名を取得し、`tokyoTrainState.tokyoTrainList` から `TokyoStationModel` を探す
+3. 見つかった場合:
+   - `SharedPreferencesService.saveMultiGoalLocation(number, lat, lng)` で座標を保存する
+   - `NativeGeofenceManager.instance.createGeofence(zone, geofenceCallback)` でジオフェンスを登録する（ID: `multiGoal_$number`）
+4. `Navigator.pop(context)` でダイアログを閉じる
+
+**ジオフェンス設定（マルチゴール登録・復元共通）:**
+- geofenceId: `'multiGoal_N'`（N はスロット番号 0〜9）
+- radiusMeters: `1000`
+- triggers: `{GeofenceEvent.enter}`
+- iOS: `initialTrigger: true`
+- Android: `expiration: Duration(days: 7)`, `loiteringDelay: Duration(minutes: 1)`, `notificationResponsiveness: Duration(seconds: 10)`
+
+### 6.6 SharedPreferencesService
+
+**ファイル:** `lib/utility/shared_preferences_service.dart`
+
+SharedPreferences への読み書きをまとめたユーティリティクラス（インスタンス化不可・static メソッドのみ）。
+
+**キー定数:**
+
+| 定数名 | 値 | 用途 |
+|---|---|---|
+| `kIsSetStation` | `'isSetStation'` | ジオフェンス監視状態 |
+| `_kMultiGoalPrefix` | `'multiGoal_'` | マルチゴール駅名（`multiGoal_0` 〜 `multiGoal_9`） |
+| `_kMultiGoalLatPrefix` | `'multiGoalLat_'` | マルチゴール緯度 |
+| `_kMultiGoalLngPrefix` | `'multiGoalLng_'` | マルチゴール経度 |
+
+**公開メソッド一覧:**
+
+| メソッド名 | 引数 | 戻り値 | 説明 |
+|---|---|---|---|
+| `loadIsSetStation()` | なし | `Future<bool>` | `isSetStation` を読み込む（未設定は false） |
+| `saveIsSetStation(bool flag)` | flag | `Future<void>` | flag=true なら setBool、false なら remove |
+| `saveMultiGoalEntry({int number, String stationName})` | number, stationName | `Future<void>` | スロット番号に駅名を保存する |
+| `saveMultiGoalLocation({int number, double lat, double lng})` | number, lat, lng | `Future<void>` | スロット番号に座標を保存する（ジオフェンス復元用） |
+| `loadMultiGoalLocation({int number})` | number | `Future<({double? lat, double? lng})>` | スロット番号の座標を読み込む（未保存は null） |
+| `loadMultiGoalEntry({int number})` | number | `Future<String?>` | スロット番号の駅名を読み込む |
+| `deleteMultiGoalEntry({int number})` | number | `Future<void>` | 駅名・緯度・経度をまとめて削除する |
+| `loadAllMultiGoalEntries()` | なし | `Future<Map<int, String>>` | 0〜9 全スロットを走査し、登録済みのエントリを返す |
+| `saveSelectedStation(String json)` | json | `Future<void>` | 選択駅の JSON 文字列を保存する |
+| `loadSelectedStation()` | なし | `Future<String?>` | 選択駅の JSON 文字列を読み込む |
+| `removeSelectedStation()` | なし | `Future<void>` | 選択駅を削除する |
 
 ---
 
@@ -839,10 +1035,11 @@ try {
 
 | 設定項目 | 値 | 説明 |
 |---|---|---|
-| geofenceId | `'station_${駅名}'` | ジオフェンスの識別子 |
+| geofenceId（単体） | `'station_${駅名}'` | 単一駅選択のジオフェンス識別子 |
+| geofenceId（マルチゴール） | `'multiGoal_N'`（N=0〜9） | マルチゴールのジオフェンス識別子 |
 | radiusMeters | `1000.0` | ジオフェンスの半径（メートル） |
 | triggers | `[GeofenceEvent.enter]` | 入場イベントのみ（退場イベントは対象外） |
-| 同時登録数 | 1件のみ | 新しい駅を設定すると前の登録は removeAllGeofences() で解除する |
+| 同時登録数 | 複数可（単体1件 + マルチゴール最大10件） | マルチゴールは個別に `removeGeofenceById()` で削除する。単体は `removeAllGeofences()` で全削除する |
 
 ### 8.2 iOS固有設定
 
@@ -974,3 +1171,6 @@ Android Emulator:
 | 1.3 | 2026-03-03 | flutter_volume_controller を技術スタックに追加（2.1）。geofenceCallbackに音量最大化ステップを追記（6.3・ステップ番号を2→3・4に繰り下げ） |
 | 1.4 | 2026-03-07 | scrollable_positioned_list を技術スタックに追加（2.1）。駅名検索機能を追加（1.2・6.2: コントローラー追加・検索フォーム実装仕様・_jumpToIndex()・firstIndexByTrainName）。路線・駅リストを CustomScrollView+SliverList から ScrollablePositionedList.builder に変更（6.2） |
 | 1.5 | 2026-03-08 | 選択駅ジャンプ・同名駅循環ジャンプ機能を追加（1.2・6.2: _destinationOccurrenceIndex ローカル状態追加・_getTrainIndicesForStation()メソッド仕様追加・📍↕ボタン実装仕様追加） |
+| 1.6 | 2026-03-14 | 複数目的地登録機能を追加。SharedPreferencesService ユーティリティクラスを追加（6.6）。MultiGoalDisplayAlert（6.4）・MultiGoalSettingAlert（6.5）の画面仕様を追加。ディレクトリ構成を更新（3: screens/components/・screens/parts/・utility/shared_preferences_service.dart 追加）。AppParamState に selectedMultiNumber・selectedStationName フィールドを追加（4.3）。SharedPreferences キー表にマルチゴールキーを追加（4.3）。appParamProvider にマルチゴール操作メソッドを追加（5.2）。ControllersMixin の定義形式を更新（5.3）。HomeScreen に _multiGoalMap・_loadMultiGoals()・_restoreMultiGoalGeofences()・「複数」ボタン・停止ボタン切り替え仕様を追加（6.2）。ジオフェンス共通設定を更新（8.1: マルチゴールID・同時登録数） |
+| 1.7 | 2026-03-14 | ポップアップメニューの全行に×ボタンを表示するよう変更（6.2 AppBarボタン実装仕様）。×タップ時に `Vibration.cancel()` を呼び出してバイブレーションを停止する処理を追加（6.2）。目のアイコンの色条件を `isSetStation || _multiGoalMap.isNotEmpty` に変更（6.2） |
+| 1.8 | 2026-03-15 | `geofenceCallback` と `getTrainIndicesForStation` を `home_screen.dart` から `utility/functions.dart` に抽出（6.2・6.3）。バイブレーション定数を `const/const.dart`（`kVibrationPattern` / `kVibrationIntensities`）に抽出（6.3）。ディレクトリ構成に `const/` と `utility/functions.dart` を追加（3）。`AppParamState.selectedMultiNumber` の初期値を `0` → `-1` に変更（4.3・5.2） |

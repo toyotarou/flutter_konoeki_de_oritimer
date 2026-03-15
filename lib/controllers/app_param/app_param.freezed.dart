@@ -19,6 +19,7 @@ mixin _$AppParamState {
   bool get isSetStation => throw _privateConstructorUsedError;
   int get selectedMultiNumber => throw _privateConstructorUsedError;
   String get selectedStationName => throw _privateConstructorUsedError;
+  String get selectedPatternDispString => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
   $AppParamStateCopyWith<AppParamState> get copyWith =>
@@ -32,7 +33,10 @@ abstract class $AppParamStateCopyWith<$Res> {
       _$AppParamStateCopyWithImpl<$Res, AppParamState>;
   @useResult
   $Res call(
-      {bool isSetStation, int selectedMultiNumber, String selectedStationName});
+      {bool isSetStation,
+      int selectedMultiNumber,
+      String selectedStationName,
+      String selectedPatternDispString});
 }
 
 /// @nodoc
@@ -51,6 +55,7 @@ class _$AppParamStateCopyWithImpl<$Res, $Val extends AppParamState>
     Object? isSetStation = null,
     Object? selectedMultiNumber = null,
     Object? selectedStationName = null,
+    Object? selectedPatternDispString = null,
   }) {
     return _then(_value.copyWith(
       isSetStation: null == isSetStation
@@ -65,6 +70,10 @@ class _$AppParamStateCopyWithImpl<$Res, $Val extends AppParamState>
           ? _value.selectedStationName
           : selectedStationName // ignore: cast_nullable_to_non_nullable
               as String,
+      selectedPatternDispString: null == selectedPatternDispString
+          ? _value.selectedPatternDispString
+          : selectedPatternDispString // ignore: cast_nullable_to_non_nullable
+              as String,
     ) as $Val);
   }
 }
@@ -78,7 +87,10 @@ abstract class _$$AppParamStateImplCopyWith<$Res>
   @override
   @useResult
   $Res call(
-      {bool isSetStation, int selectedMultiNumber, String selectedStationName});
+      {bool isSetStation,
+      int selectedMultiNumber,
+      String selectedStationName,
+      String selectedPatternDispString});
 }
 
 /// @nodoc
@@ -95,6 +107,7 @@ class __$$AppParamStateImplCopyWithImpl<$Res>
     Object? isSetStation = null,
     Object? selectedMultiNumber = null,
     Object? selectedStationName = null,
+    Object? selectedPatternDispString = null,
   }) {
     return _then(_$AppParamStateImpl(
       isSetStation: null == isSetStation
@@ -109,6 +122,10 @@ class __$$AppParamStateImplCopyWithImpl<$Res>
           ? _value.selectedStationName
           : selectedStationName // ignore: cast_nullable_to_non_nullable
               as String,
+      selectedPatternDispString: null == selectedPatternDispString
+          ? _value.selectedPatternDispString
+          : selectedPatternDispString // ignore: cast_nullable_to_non_nullable
+              as String,
     ));
   }
 }
@@ -119,7 +136,8 @@ class _$AppParamStateImpl implements _AppParamState {
   const _$AppParamStateImpl(
       {this.isSetStation = false,
       this.selectedMultiNumber = -1,
-      this.selectedStationName = ''});
+      this.selectedStationName = '',
+      this.selectedPatternDispString = ''});
 
   @override
   @JsonKey()
@@ -130,10 +148,13 @@ class _$AppParamStateImpl implements _AppParamState {
   @override
   @JsonKey()
   final String selectedStationName;
+  @override
+  @JsonKey()
+  final String selectedPatternDispString;
 
   @override
   String toString() {
-    return 'AppParamState(isSetStation: $isSetStation, selectedMultiNumber: $selectedMultiNumber, selectedStationName: $selectedStationName)';
+    return 'AppParamState(isSetStation: $isSetStation, selectedMultiNumber: $selectedMultiNumber, selectedStationName: $selectedStationName, selectedPatternDispString: $selectedPatternDispString)';
   }
 
   @override
@@ -146,12 +167,15 @@ class _$AppParamStateImpl implements _AppParamState {
             (identical(other.selectedMultiNumber, selectedMultiNumber) ||
                 other.selectedMultiNumber == selectedMultiNumber) &&
             (identical(other.selectedStationName, selectedStationName) ||
-                other.selectedStationName == selectedStationName));
+                other.selectedStationName == selectedStationName) &&
+            (identical(other.selectedPatternDispString,
+                    selectedPatternDispString) ||
+                other.selectedPatternDispString == selectedPatternDispString));
   }
 
   @override
-  int get hashCode => Object.hash(
-      runtimeType, isSetStation, selectedMultiNumber, selectedStationName);
+  int get hashCode => Object.hash(runtimeType, isSetStation,
+      selectedMultiNumber, selectedStationName, selectedPatternDispString);
 
   @JsonKey(ignore: true)
   @override
@@ -164,7 +188,8 @@ abstract class _AppParamState implements AppParamState {
   const factory _AppParamState(
       {final bool isSetStation,
       final int selectedMultiNumber,
-      final String selectedStationName}) = _$AppParamStateImpl;
+      final String selectedStationName,
+      final String selectedPatternDispString}) = _$AppParamStateImpl;
 
   @override
   bool get isSetStation;
@@ -172,6 +197,8 @@ abstract class _AppParamState implements AppParamState {
   int get selectedMultiNumber;
   @override
   String get selectedStationName;
+  @override
+  String get selectedPatternDispString;
   @override
   @JsonKey(ignore: true)
   _$$AppParamStateImplCopyWith<_$AppParamStateImpl> get copyWith =>

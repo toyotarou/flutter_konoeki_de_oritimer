@@ -237,6 +237,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   @override
   Widget build(BuildContext context) {
     final TokyoStationModel? selected = _selected;
+    final String? effectiveStationName =
+        selected?.stationName ?? (_multiGoalMap.length == 1 ? _multiGoalMap.values.first : null);
 
     // 路線名 -> リスト内インデックス
     final Map<String, int> firstIndexByTrainName = <String, int>{};
@@ -480,12 +482,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                       children: [
                         Row(
                           children: [
-                            Text('選択中: ${selected?.stationName ?? (_multiGoalMap.isNotEmpty ? "複数" : "(未選択)")}'),
+                            Text('選択中: ${effectiveStationName ?? (_multiGoalMap.length > 1 ? "複数" : "(未選択)")}'),
                             SizedBox(width: 20),
-                            if (selected != null) ...[
+                            if (effectiveStationName != null) ...[
                               IconButton(
                                 onPressed: () {
-                                  final List<int> indices = _getTrainIndicesForStation(selected.stationName);
+                                  final List<int> indices = _getTrainIndicesForStation(effectiveStationName);
                                   if (indices.isNotEmpty) {
                                     setState(() => _destinationOccurrenceIndex = 0);
                                     _jumpToIndex(indices[0]);
@@ -497,7 +499,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
                               IconButton(
                                 onPressed: () {
-                                  final List<int> indices = _getTrainIndicesForStation(selected.stationName);
+                                  final List<int> indices = _getTrainIndicesForStation(effectiveStationName);
                                   if (indices.isEmpty) return;
                                   final int next = (_destinationOccurrenceIndex + 1) % indices.length;
                                   setState(() => _destinationOccurrenceIndex = next);

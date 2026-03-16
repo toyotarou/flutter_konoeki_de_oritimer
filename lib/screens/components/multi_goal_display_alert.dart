@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
+import 'package:flutter_oritimer/model/tokyo_train_model.dart';
 import 'package:flutter_oritimer/screens/components/pattern_route_display_alert.dart';
+import 'package:flutter_oritimer/utility/functions.dart';
 import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_oritimer/screens/components/multi_goal_setting_alert.dart';
 import 'package:flutter_oritimer/screens/parts/error_dialog.dart';
 import 'package:flutter_oritimer/screens/parts/oritimer_dialog.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:native_geofence/native_geofence.dart';
 
 class MultiGoalDisplayAlert extends ConsumerStatefulWidget {
@@ -19,12 +22,24 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
     with ControllersMixin<MultiGoalDisplayAlert> {
   Map<int, String> _multiGoalMap = <int, String>{};
   bool _loadedFromPattern = false;
+  Position? _currentPosition;
 
   ///
   @override
   void initState() {
     super.initState();
     _loadMultiGoals();
+    _fetchCurrentPosition();
+  }
+
+  ///
+  Future<void> _fetchCurrentPosition() async {
+    try {
+      final Position position = await Geolocator.getCurrentPosition();
+      if (mounted) {
+        setState(() => _currentPosition = position);
+      }
+    } catch (_) {}
   }
 
   ///
@@ -176,31 +191,53 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
             border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.3))),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(
-            children: <Widget>[
-              CircleAvatar(
-                radius: 14,
-                backgroundColor: Colors.yellowAccent.withValues(alpha: 0.2),
-                child: Text((number + 1).toString(), style: const TextStyle(fontSize: 12, color: Colors.white)),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(stationName, style: const TextStyle(fontSize: 14, color: Colors.white)),
-              ),
-
-              if (isLast)
-                GestureDetector(
-                  onTap: () async {
-                    // ジオフェンス削除
-                    try {
-                      await NativeGeofenceManager.instance.removeGeofenceById('multiGoal_$number');
-                    } catch (_) {}
-
-                    await appParamNotifier.deleteMultiGoalEntry(number: number);
-                    _loadMultiGoals();
-                  },
-                  child: const Icon(Icons.delete),
+          child: Stack(
+            children: [
+              Positioned(
+                right: 30,
+                child: Container(
+                  width: 80,
+                  decoration: BoxDecoration(color: Colors.yellowAccent.withValues(alpha: 0.2)),
+                  child: Text(
+                    distanceText(
+                      stationName: stationName,
+                      currentPosition: _currentPosition,
+                      trainList: tokyoTrainState.tokyoTrainList,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
+              ),
+
+              Row(
+                children: <Widget>[
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Colors.yellowAccent.withValues(alpha: 0.2),
+                    child: Text((number + 1).toString(), style: const TextStyle(fontSize: 12, color: Colors.white)),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(stationName, style: const TextStyle(fontSize: 14, color: Colors.white)),
+                  ),
+
+                  if (isLast)
+                    GestureDetector(
+                      onTap: () async {
+                        // ジオフェンス削除
+                        try {
+                          await NativeGeofenceManager.instance.removeGeofenceById('multiGoal_$number');
+                        } catch (_) {}
+
+                        await appParamNotifier.deleteMultiGoalEntry(number: number);
+                        _loadMultiGoals();
+                      },
+                      child: const Icon(Icons.delete),
+                    )
+                  else
+                    Icon(Icons.square_outlined),
+                ],
+              ),
             ],
           ),
         );

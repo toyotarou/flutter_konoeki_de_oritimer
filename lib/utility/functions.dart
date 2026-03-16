@@ -6,9 +6,34 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_oritimer/const/const.dart';
 import 'package:flutter_oritimer/model/tokyo_train_model.dart';
+import 'package:flutter_oritimer/utility/utility.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:vibration/vibration.dart';
+
+/// 現在地と指定駅の距離を文字列で返す（例: "320m", "1.2km", "---"）
+String distanceText({
+  required String stationName,
+  required Position? currentPosition,
+  required List<TokyoTrainModel> trainList,
+}) {
+  if (currentPosition == null) return '---';
+
+  for (final TokyoTrainModel train in trainList) {
+    for (final TokyoStationModel station in train.station) {
+      if (station.stationName == stationName) {
+        final double meters = Utility().calculateDistance(
+          LatLng(currentPosition.latitude, currentPosition.longitude),
+          LatLng(station.lat, station.lng),
+        );
+        return meters >= 1000 ? '${(meters / 1000).toStringAsFixed(1)}km' : '${meters.toStringAsFixed(0)}m';
+      }
+    }
+  }
+  return '---';
+}
 
 /// 指定した駅名を含む路線のインデックス一覧を返す
 List<int> getTrainIndicesForStation({required String stationName, required List<TokyoTrainModel> trainList}) {

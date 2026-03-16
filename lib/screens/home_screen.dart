@@ -11,6 +11,7 @@ import 'package:flutter_oritimer/utility/functions.dart';
 import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -43,6 +44,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   bool _permissionsGranted = false;
 
   Map<int, String> _multiGoalMap = <int, String>{};
+  Position? _currentPosition;
 
   ///
   @override
@@ -50,6 +52,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
     super.initState();
     _initPlugins();
     _loadMultiGoals();
+    _fetchCurrentPosition();
+  }
+
+  ///
+  Future<void> _fetchCurrentPosition() async {
+    try {
+      final Position position = await Geolocator.getCurrentPosition();
+      if (mounted) {
+        setState(() => _currentPosition = position);
+      }
+    } catch (_) {}
   }
 
   ///
@@ -482,7 +495,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                       children: [
                         Row(
                           children: [
-                            Text('選択中: ${effectiveStationName ?? (_multiGoalMap.length > 1 ? "複数" : "(未選択)")}'),
+                            Column(
+                              children: [
+                                Text('選択中: ${effectiveStationName ?? (_multiGoalMap.length > 1 ? "複数" : "(未選択)")}'),
+
+                                if (effectiveStationName != null) ...[
+                                  Text(
+                                    distanceText(
+                                      stationName: effectiveStationName,
+                                      currentPosition: _currentPosition,
+                                      trainList: widget.tokyoTrainList,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+
                             SizedBox(width: 20),
                             if (effectiveStationName != null) ...[
                               IconButton(

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'controllers/controllers_mixin.dart';
 import 'screens/home_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   // メモリ保護のためキャッシュ上限を控えめに（必要に応じて調整）
   PaintingBinding.instance.imageCache.maximumSize = 150; // デフォルト200

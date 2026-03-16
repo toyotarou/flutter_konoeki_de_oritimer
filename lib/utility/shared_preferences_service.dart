@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// SharedPreferences への読み書きをまとめたユーティリティクラス
@@ -63,6 +65,16 @@ class SharedPreferencesService {
     await prefs.remove('$_kMultiGoalLngPrefix$number');
   }
 
+  /// 登録済みの全エントリを削除する
+  static Future<void> clearAllMultiGoalEntries() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    for (int i = 0; i < 10; i++) {
+      await prefs.remove('$_kMultiGoalPrefix$i');
+      await prefs.remove('$_kMultiGoalLatPrefix$i');
+      await prefs.remove('$_kMultiGoalLngPrefix$i');
+    }
+  }
+
   /// 登録済みの全エントリを読み込む（番号 → 駅名）
   static Future<Map<int, String>> loadAllMultiGoalEntries() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -74,6 +86,42 @@ class SharedPreferencesService {
       }
     }
     return result;
+  }
+
+  // ─── routePattern ────────────────────────────────────
+
+  static const String _kRoutePatternPrefix = 'routePattern_';
+
+  /// パターンを保存する（空きスロットに自動で入る）
+  static Future<void> saveRoutePattern({required String name, required List<String> stations}) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    int slot = 0;
+    while (prefs.getString('$_kRoutePatternPrefix$slot') != null) {
+      slot++;
+    }
+    final String json = jsonEncode(<String, dynamic>{'name': name, 'stations': stations});
+    await prefs.setString('$_kRoutePatternPrefix$slot', json);
+  }
+
+  /// 登録済みの全パターンを読み込む（スロット番号 → {name, stations}）
+  static Future<Map<int, ({String name, List<String> stations})>> loadAllRoutePatterns() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final Map<int, ({String name, List<String> stations})> result = <int, ({String name, List<String> stations})>{};
+    for (int i = 0; i < 50; i++) {
+      final String? raw = prefs.getString('$_kRoutePatternPrefix$i');
+      if (raw == null) continue;
+      try {
+        final Map<String, dynamic> map = jsonDecode(raw) as Map<String, dynamic>;
+        result[i] = (name: map['name'] as String, stations: (map['stations'] as List<dynamic>).cast<String>());
+      } catch (_) {}
+    }
+    return result;
+  }
+
+  /// 指定スロットのパターンを削除する
+  static Future<void> deleteRoutePattern({required int slot}) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_kRoutePatternPrefix$slot');
   }
 
   // ─── selectedStation ─────────────────────────────────

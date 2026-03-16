@@ -13,6 +13,7 @@ class AppParamState with _$AppParamState {
     @Default(false) bool isSetStation,
     @Default(-1) int selectedMultiNumber,
     @Default('') String selectedStationName,
+    @Default('') String selectedPatternDispString,
   }) = _AppParamState;
 }
 
@@ -62,4 +63,7 @@ class AppParam extends _$AppParam {
 
   /// 登録済みの全マルチゴールを読み込む（番号 → 駅名）
   Future<Map<int, String>> loadAllMultiGoalEntries() => SharedPreferencesService.loadAllMultiGoalEntries();
+
+  ///
+  void setSelectedPatternDispString({required String str}) => state = state.copyWith(selectedPatternDispString: str);
 }

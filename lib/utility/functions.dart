@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_oritimer/const/const.dart';
 import 'package:flutter_oritimer/model/tokyo_train_model.dart';
@@ -12,6 +12,32 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:vibration/vibration.dart';
+
+///
+Future<void> showDeleteDialog({
+  required BuildContext context,
+  required VoidCallback onConfirm,
+  String content = 'このデータを消去しますか？',
+}) async {
+  final Widget cancelButton = TextButton(onPressed: () => Navigator.pop(context), child: const Text('いいえ'));
+
+  final Widget continueButton = TextButton(
+    onPressed: () {
+      Navigator.pop(context);
+      onConfirm();
+    },
+    child: const Text('はい'),
+  );
+
+  final AlertDialog alert = AlertDialog(
+    backgroundColor: Colors.blueGrey.withValues(alpha: 0.3),
+    content: Text(content),
+    actions: <Widget>[cancelButton, continueButton],
+  );
+
+  // ignore: inference_failure_on_function_invocation
+  await showDialog(context: context, builder: (BuildContext context) => alert);
+}
 
 /// 現在地と指定駅の距離を文字列で返す（例: "320m", "1.2km", "---"）
 String distanceText({

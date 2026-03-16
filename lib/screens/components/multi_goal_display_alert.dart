@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
-import 'package:flutter_oritimer/model/tokyo_train_model.dart';
 import 'package:flutter_oritimer/screens/components/pattern_route_display_alert.dart';
 import 'package:flutter_oritimer/utility/functions.dart';
 import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
@@ -223,14 +222,18 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
 
                   if (isLast)
                     GestureDetector(
-                      onTap: () async {
-                        // ジオフェンス削除
-                        try {
-                          await NativeGeofenceManager.instance.removeGeofenceById('multiGoal_$number');
-                        } catch (_) {}
+                      onTap: () {
+                        showDeleteDialog(
+                          context: context,
+                          onConfirm: () async {
+                            try {
+                              await NativeGeofenceManager.instance.removeGeofenceById('multiGoal_$number');
+                            } catch (_) {}
 
-                        await appParamNotifier.deleteMultiGoalEntry(number: number);
-                        _loadMultiGoals();
+                            await appParamNotifier.deleteMultiGoalEntry(number: number);
+                            _loadMultiGoals();
+                          },
+                        );
                       },
                       child: const Icon(Icons.delete),
                     )

@@ -176,16 +176,21 @@ class _PatternRouteDisplayAlertState extends ConsumerState<PatternRouteDisplayAl
               const SizedBox(width: 16),
 
               IconButton(
-                onPressed: () async {
-                  await SharedPreferencesService.deleteRoutePattern(slot: slot);
+                onPressed: () {
+                  showDeleteDialog(
+                    context: context,
+                    onConfirm: () async {
+                      await SharedPreferencesService.deleteRoutePattern(slot: slot);
 
-                  // 削除したパターンが選択中だった場合はハイライトをクリア
-                  if (appParamState.selectedPatternDispString == dispString) {
-                    appParamNotifier.setSelectedPatternDispString(str: '');
-                    setState(() => _selectedStations = null);
-                  }
+                      // 削除したパターンが選択中だった場合はハイライトをクリア
+                      if (appParamState.selectedPatternDispString == dispString) {
+                        appParamNotifier.setSelectedPatternDispString(str: '');
+                        setState(() => _selectedStations = null);
+                      }
 
-                  _loadPatterns();
+                      _loadPatterns();
+                    },
+                  );
                 },
                 icon: const Icon(Icons.delete),
               ),

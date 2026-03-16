@@ -516,18 +516,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                               IconButton(
                                 onPressed: () {
                                   final List<int> indices = _getTrainIndicesForStation(effectiveStationName);
-                                  if (indices.isNotEmpty) {
-                                    setState(() => _destinationOccurrenceIndex = 0);
-                                    _jumpToIndex(indices[0]);
-                                  }
-                                },
-                                icon: Icon(Icons.location_on, color: Colors.greenAccent),
-                                tooltip: '選択駅へジャンプ',
-                              ),
-
-                              IconButton(
-                                onPressed: () {
-                                  final List<int> indices = _getTrainIndicesForStation(effectiveStationName);
                                   if (indices.isEmpty) return;
                                   final int next = (_destinationOccurrenceIndex + 1) % indices.length;
                                   setState(() => _destinationOccurrenceIndex = next);

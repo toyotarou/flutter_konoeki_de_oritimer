@@ -235,7 +235,7 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                       child: const Icon(Icons.delete),
                     )
                   else
-                    Icon(Icons.square_outlined),
+                    Icon(Icons.square_outlined, color: Colors.transparent),
                 ],
               ),
             ],

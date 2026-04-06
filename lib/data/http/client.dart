@@ -1,12 +1,13 @@
 // ignore_for_file: public_member_api_docs, depend_on_referenced_packages
 import 'dart:convert';
 
-import 'package:flutter_oritimer/data/http/path.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart';
 
+import 'path.dart';
+
 ///////////////////////////////////////////////////////////////////
-final Provider<HttpClient> httpClientProvider = Provider<HttpClient>((ref) => HttpClient());
+final Provider<HttpClient> httpClientProvider = Provider<HttpClient>((ProviderRef<HttpClient> ref) => HttpClient());
 
 ////////////////////
 class HttpClient {

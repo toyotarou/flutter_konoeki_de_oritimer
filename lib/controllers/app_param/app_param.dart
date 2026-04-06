@@ -21,7 +21,7 @@ class AppParamState with _$AppParamState {
 class AppParam extends _$AppParam {
   ///
   @override
-  AppParamState build() => AppParamState();
+  AppParamState build() => const AppParamState();
 
   /// アプリ起動時に SharedPreferences から状態を復元する
   Future<void> loadFromPrefs() async {
@@ -47,7 +47,9 @@ class AppParam extends _$AppParam {
     final int number = state.selectedMultiNumber;
     final String stationName = state.selectedStationName;
 
-    if (number < 0 || stationName.isEmpty) return false;
+    if (number < 0 || stationName.isEmpty) {
+      return false;
+    }
 
     await SharedPreferencesService.saveMultiGoalEntry(number: number, stationName: stationName);
     return true;

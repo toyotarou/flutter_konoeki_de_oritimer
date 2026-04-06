@@ -1,76 +1,16 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_oritimer/const/const.dart';
-import 'package:flutter_oritimer/model/tokyo_train_model.dart';
-import 'package:flutter_oritimer/utility/utility.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:vibration/vibration.dart';
 
-///
-Future<void> showDeleteDialog({
-  required BuildContext context,
-  required VoidCallback onConfirm,
-  String content = 'このデータを消去しますか？',
-}) async {
-  final Widget cancelButton = TextButton(onPressed: () => Navigator.pop(context), child: const Text('いいえ'));
-
-  final Widget continueButton = TextButton(
-    onPressed: () {
-      Navigator.pop(context);
-      onConfirm();
-    },
-    child: const Text('はい'),
-  );
-
-  final AlertDialog alert = AlertDialog(
-    backgroundColor: Colors.blueGrey.withValues(alpha: 0.3),
-    content: Text(content),
-    actions: <Widget>[cancelButton, continueButton],
-  );
-
-  // ignore: inference_failure_on_function_invocation
-  await showDialog(context: context, builder: (BuildContext context) => alert);
-}
-
-/// 現在地と指定駅の距離を文字列で返す（例: "320m", "1.2km", "---"）
-String distanceText({
-  required String stationName,
-  required Position? currentPosition,
-  required List<TokyoTrainModel> trainList,
-}) {
-  if (currentPosition == null) return '---';
-
-  for (final TokyoTrainModel train in trainList) {
-    for (final TokyoStationModel station in train.station) {
-      if (station.stationName == stationName) {
-        final double meters = Utility().calculateDistance(
-          LatLng(currentPosition.latitude, currentPosition.longitude),
-          LatLng(station.lat, station.lng),
-        );
-        return meters >= 1000 ? '${(meters / 1000).toStringAsFixed(1)}km' : '${meters.toStringAsFixed(0)}m';
-      }
-    }
-  }
-  return '---';
-}
-
-/// 指定した駅名を含む路線のインデックス一覧を返す
-List<int> getTrainIndicesForStation({required String stationName, required List<TokyoTrainModel> trainList}) {
-  final List<int> indices = <int>[];
-  for (int i = 0; i < trainList.length; i++) {
-    if (trainList[i].station.any((TokyoStationModel s) => s.stationName == stationName)) {
-      indices.add(i);
-    }
-  }
-  return indices;
-}
+import '../const/const.dart';
+import 'shared_preferences_service.dart';
 
 /// =======================
 /// Geofence コールバック（トップレベル必須）
@@ -96,7 +36,7 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
   if (Platform.isAndroid) {
     try {
       await FlutterVolumeController.updateShowSystemUI(false);
-      await FlutterVolumeController.setVolume(1.0, stream: AudioStream.music);
+      await FlutterVolumeController.setVolume(1.0);
     } catch (_) {}
   }
 
@@ -126,8 +66,15 @@ Future<void> geofenceCallback(GeofenceCallbackParams params) async {
   // repeat: 0 → パターンの先頭から繰り返し → Vibration.cancel() で確実に停止
   if (Platform.isAndroid) {
     final bool hasVibrator = await Vibration.hasVibrator();
-    if (hasVibrator == true) {
+    if (hasVibrator) {
       await Vibration.vibrate(pattern: kVibrationPattern, intensities: kVibrationIntensities, repeat: 0);
     }
   }
+
+  // アラートフラグを SharedPreferences に保存する（バックグラウンド起動後の復元用）
+  await SharedPreferencesService.saveGeofencePendingAlert();
+
+  // アプリが前面にある場合、UI isolate へ直接通知してダイアログを表示させる
+  final SendPort? uiPort = IsolateNameServer.lookupPortByName('geofence_alert_port');
+  uiPort?.send(null);
 }

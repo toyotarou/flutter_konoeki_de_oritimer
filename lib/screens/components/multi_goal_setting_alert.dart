@@ -1,12 +1,16 @@
+// ignore_for_file: always_specify_types
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
-import 'package:flutter_oritimer/model/tokyo_train_model.dart';
-import 'package:flutter_oritimer/screens/parts/error_dialog.dart';
-import 'package:flutter_oritimer/utility/functions.dart';
-import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+
+import '../../controllers/controllers_mixin.dart';
+import '../../model/tokyo_train_model.dart';
+import '../../utility/functions.dart';
+import '../../utility/shared_preferences_service.dart';
+import '../../utility/train_indices.dart';
+import '../parts/error_dialog.dart';
 
 class MultiGoalSettingAlert extends ConsumerStatefulWidget {
   const MultiGoalSettingAlert({super.key});
@@ -47,7 +51,9 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
 
   ///
   void _jumpToIndex(int index) {
-    if (!_itemScrollController.isAttached) return;
+    if (!_itemScrollController.isAttached) {
+      return;
+    }
     _itemScrollController.scrollTo(index: index, duration: const Duration(milliseconds: 450), curve: Curves.easeInOut);
   }
 
@@ -75,14 +81,13 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
-                    Text('multi goal setting'),
+                    const Text('multi goal setting'),
 
                     ElevatedButton(
                       onPressed: () async {
                         final bool saved = await appParamNotifier.saveMultiGoalEntry();
 
                         if (!saved) {
-                          // ignore: always_specify_types
                           Future.delayed(
                             Duration.zero,
                             () => error_dialog(
@@ -137,12 +142,15 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
                         }
 
                         // ignore: use_build_context_synchronously
-                        if (mounted) Navigator.pop(context);
+                        if (mounted) {
+                          // ignore: use_build_context_synchronously
+                          Navigator.pop(context);
+                        }
                       },
 
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
 
-                      child: Text('設定'),
+                      child: const Text('設定'),
                     ),
                   ],
                 ),
@@ -165,14 +173,16 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
                           child: Column(
                             children: [
                               GestureDetector(
-                                onTap: (isRegistered)
+                                onTap: isRegistered
                                     ? () {
                                         final String stationName = _registeredEntries[e] ?? '';
                                         final List<int> indices = getTrainIndicesForStation(
                                           stationName: stationName,
                                           trainList: tokyoTrainState.tokyoTrainList,
                                         );
-                                        if (indices.isEmpty) return;
+                                        if (indices.isEmpty) {
+                                          return;
+                                        }
                                         final int current = _occurrenceIndices[e] ?? 0;
                                         final int next = (current + 1) % indices.length;
                                         setState(() => _occurrenceIndices[e] = next);
@@ -197,7 +207,7 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
                               ),
 
                               if (isRegistered) ...[
-                                SizedBox(height: 5),
+                                const SizedBox(height: 5),
 
                                 Text(
                                   _registeredEntries[e] ?? '',
@@ -252,7 +262,9 @@ class _MultiGoalSettingAlertState extends ConsumerState<MultiGoalSettingAlert>
                 suffixIcon: ValueListenableBuilder<TextEditingValue>(
                   valueListenable: _searchController,
                   builder: (_, TextEditingValue value, _) {
-                    if (value.text.isEmpty) return const SizedBox.shrink();
+                    if (value.text.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
                     return IconButton(
                       icon: const Icon(Icons.clear, size: 18, color: Colors.white),
                       onPressed: () => _searchController.clear(),

@@ -1,21 +1,27 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
-import 'package:flutter_oritimer/model/tokyo_train_model.dart';
-import 'package:flutter_oritimer/screens/components/multi_goal_display_alert.dart';
-import 'package:flutter_oritimer/screens/parts/oritimer_dialog.dart';
-import 'package:flutter_oritimer/utility/functions.dart';
-import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:native_geofence/native_geofence.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:native_geofence/native_geofence.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
+
+import '../controllers/controllers_mixin.dart';
+import '../model/tokyo_train_model.dart';
+import '../utility/distance_text.dart';
+import '../utility/functions.dart';
+import '../utility/shared_preferences_service.dart';
+import '../utility/train_indices.dart';
+import 'components/multi_goal_display_alert.dart';
+import 'parts/geofence_alert_dialog.dart';
+import 'parts/oritimer_dialog.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({
@@ -33,7 +39,7 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<HomeScreen>, WidgetsBindingObserver {
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   final ItemScrollController _itemScrollController = ItemScrollController();
   final TextEditingController _searchController = TextEditingController();
@@ -46,13 +52,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   Map<int, String> _multiGoalMap = <int, String>{};
   Position? _currentPosition;
 
+  final ReceivePort _geofencePort = ReceivePort();
+  bool _isAlertDialogShowing = false;
+  final FocusNode _dummyFocusNode = FocusNode();
+
   ///
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initPlugins();
     _loadMultiGoals();
     _fetchCurrentPosition();
+    _registerGeofencePort();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAndShowPendingGeofenceAlert();
+    }
   }
 
   ///
@@ -101,6 +120,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
     // マルチゴールのジオフェンスを復元する
     await _restoreMultiGoalGeofences();
+
+    // 起動前にジオフェンスが発火していた場合はダイアログを表示する
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAndShowPendingGeofenceAlert());
   }
 
   ///
@@ -112,7 +134,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
         number: entry.key,
       );
 
-      if (location.lat == null || location.lng == null) continue;
+      if (location.lat == null || location.lng == null) {
+        continue;
+      }
 
       final Geofence zone = Geofence(
         id: 'multiGoal_${entry.key}',
@@ -198,6 +222,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
     if (Platform.isAndroid) {
       await Vibration.cancel();
     }
+    await SharedPreferencesService.clearGeofencePendingAlert();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove('selectedStation');
     if (mounted) {
@@ -206,8 +231,85 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   }
 
   ///
+  Future<void> _checkAndShowPendingGeofenceAlert() async {
+    final bool pending = await SharedPreferencesService.loadGeofencePendingAlert();
+    if (pending && mounted && !_isAlertDialogShowing) {
+      _showGeofenceAlertDialog();
+    }
+  }
+
+  ///
+  void _registerGeofencePort() {
+    IsolateNameServer.removePortNameMapping('geofence_alert_port');
+    IsolateNameServer.registerPortWithName(_geofencePort.sendPort, 'geofence_alert_port');
+    _geofencePort.listen((_) {
+      if (mounted && !_isAlertDialogShowing) {
+        _dummyFocusNode.requestFocus();
+        _showGeofenceAlertDialog();
+      }
+    });
+  }
+
+  ///
+  Future<void> _showGeofenceAlertDialog() async {
+    if (!mounted) {
+      return;
+    }
+    _isAlertDialogShowing = true;
+
+    int? multiGoalNumber;
+    String stationName;
+
+    if (_multiGoalMap.isNotEmpty) {
+      final List<int> sortedKeys = _multiGoalMap.keys.toList()..sort();
+      multiGoalNumber = sortedKeys.first;
+      stationName = _multiGoalMap[multiGoalNumber]!;
+    } else {
+      stationName = _selected?.stationName ?? '目的地';
+    }
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext ctx) => GeofenceAlertDialog(
+        stationName: stationName,
+        onStop: () async {
+          Navigator.pop(ctx);
+          await _stopFirstGoal(multiGoalNumber);
+        },
+      ),
+    );
+
+    _isAlertDialogShowing = false;
+  }
+
+  ///
+  Future<void> _stopFirstGoal(int? multiGoalNumber) async {
+    await SharedPreferencesService.clearGeofencePendingAlert();
+    if (multiGoalNumber != null) {
+      // マルチゴール：最初の1件だけ停止
+      if (Platform.isAndroid) {
+        await Vibration.cancel();
+      }
+      try {
+        await NativeGeofenceManager.instance.removeGeofenceById('multiGoal_$multiGoalNumber');
+      } catch (_) {}
+      await SharedPreferencesService.deleteMultiGoalEntry(number: multiGoalNumber);
+      _loadMultiGoals();
+    } else {
+      // 単一駅モード：全停止
+      appParamNotifier.setIsSetStation(flag: false);
+      await _removeAllGeofences();
+    }
+  }
+
+  ///
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    IsolateNameServer.removePortNameMapping('geofence_alert_port');
+    _geofencePort.close();
+    _dummyFocusNode.dispose();
     _searchController.dispose();
     if (Platform.isAndroid) {
       Vibration.cancel();
@@ -217,7 +319,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
 
   ///
   void _jumpToIndex(int index) {
-    if (!_itemScrollController.isAttached) return;
+    if (!_itemScrollController.isAttached) {
+      return;
+    }
     _itemScrollController.scrollTo(index: index, duration: const Duration(milliseconds: 450), curve: Curves.easeInOut);
   }
 
@@ -269,18 +373,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
           GestureDetector(
             onTap: () => _requestPermissions(),
             child: Column(
-              children: [
-                Icon(Icons.security, color: (_permissionsGranted) ? Colors.yellowAccent : Colors.white),
-                SizedBox(height: 5),
+              children: <Widget>[
+                Icon(Icons.security, color: _permissionsGranted ? Colors.yellowAccent : Colors.white),
+                const SizedBox(height: 5),
                 Text(
                   'request',
-                  style: TextStyle(fontSize: 10, color: (_permissionsGranted) ? Colors.yellowAccent : Colors.white),
+                  style: TextStyle(fontSize: 10, color: _permissionsGranted ? Colors.yellowAccent : Colors.white),
                 ),
               ],
             ),
           ),
 
-          SizedBox(width: 20),
+          const SizedBox(width: 20),
 
           GestureDetector(
             onTap: () {
@@ -289,12 +393,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
               _registerSelectedStation();
             },
             child: Column(
-              children: [
+              children: <Widget>[
                 Icon(
                   Icons.remove_red_eye,
                   color: (appParamState.isSetStation || _multiGoalMap.isNotEmpty) ? Colors.yellowAccent : Colors.white,
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Text(
                   'setting',
                   style: TextStyle(
@@ -308,7 +412,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
             ),
           ),
 
-          SizedBox(width: 20),
+          const SizedBox(width: 20),
 
           if (_multiGoalMap.length >= 2)
             PopupMenuButton<int>(
@@ -372,7 +476,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
               ),
             ),
 
-          SizedBox(width: 20),
+          const SizedBox(width: 20),
         ],
       ),
 
@@ -382,6 +486,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              Focus(focusNode: _dummyFocusNode, autofocus: true, child: const SizedBox.shrink()),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Row(
@@ -397,7 +502,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                           suffixIcon: ValueListenableBuilder<TextEditingValue>(
                             valueListenable: _searchController,
                             builder: (_, TextEditingValue value, _) {
-                              if (value.text.isEmpty) return const SizedBox.shrink();
+                              if (value.text.isEmpty) {
+                                return const SizedBox.shrink();
+                              }
                               return IconButton(
                                 icon: const Icon(Icons.clear, size: 18),
                                 onPressed: () => _searchController.clear(),
@@ -485,21 +592,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                 ),
               ),
 
-              SizedBox(height: 5),
+              const SizedBox(height: 5),
 
               Row(
-                children: [
+                children: <Widget>[
                   Expanded(
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
+                      children: <Widget>[
                         Row(
-                          children: [
+                          children: <Widget>[
                             Column(
-                              children: [
+                              children: <Widget>[
                                 Text('選択中: ${effectiveStationName ?? (_multiGoalMap.length > 1 ? "複数" : "(未選択)")}'),
 
-                                if (effectiveStationName != null) ...[
+                                if (effectiveStationName != null) ...<Widget>[
                                   Text(
                                     distanceText(
                                       stationName: effectiveStationName,
@@ -511,43 +618,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                               ],
                             ),
 
-                            SizedBox(width: 20),
-                            if (effectiveStationName != null) ...[
+                            const SizedBox(width: 20),
+                            if (effectiveStationName != null) ...<Widget>[
                               IconButton(
                                 onPressed: () {
                                   final List<int> indices = _getTrainIndicesForStation(effectiveStationName);
-                                  if (indices.isEmpty) return;
+                                  if (indices.isEmpty) {
+                                    return;
+                                  }
                                   final int next = (_destinationOccurrenceIndex + 1) % indices.length;
                                   setState(() => _destinationOccurrenceIndex = next);
                                   _jumpToIndex(indices[next]);
                                 },
-                                icon: Icon(Icons.swap_vert, color: Colors.greenAccent),
+                                icon: const Icon(Icons.swap_vert, color: Colors.greenAccent),
                                 tooltip: '次の同名駅へ',
                               ),
-                            ] else ...[
-                              IconButton(
+                            ] else ...<Widget>[
+                              const IconButton(
                                 onPressed: null,
-                                icon: const Icon(Icons.check_box_outline_blank, color: Colors.transparent),
+                                icon: Icon(Icons.check_box_outline_blank, color: Colors.transparent),
                               ),
-                              IconButton(onPressed: null, icon: const Icon(Icons.swap_vert, color: Colors.transparent)),
+                              const IconButton(onPressed: null, icon: Icon(Icons.swap_vert, color: Colors.transparent)),
                             ],
                           ],
                         ),
-                        SizedBox.shrink(),
+                        const SizedBox.shrink(),
                       ],
                     ),
                   ),
 
                   ElevatedButton(
                     onPressed: () {
-                      OritimerDialog(context: context, widget: MultiGoalDisplayAlert()).then((_) {
+                      OritimerDialog(context: context, widget: const MultiGoalDisplayAlert()).then((_) {
                         _loadMultiGoals();
                       });
                     },
 
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
 
-                    child: Text('複数'),
+                    child: const Text('複数'),
                   ),
                 ],
               ),
@@ -566,21 +675,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
   Widget displayStationList(Map<String, int> firstIndexByTrainName) {
     final List<Widget> list = <Widget>[];
 
-    for (var element in widget.tokyoTrainList) {
-      List<Widget> list2 = <Widget>[];
-      for (var element2 in element.station) {
+    for (final TokyoTrainModel element in widget.tokyoTrainList) {
+      final List<Widget> list2 = <Widget>[];
+      for (final TokyoStationModel element2 in element.station) {
         list2.add(
           DefaultTextStyle(
-            style: TextStyle(fontSize: 12),
+            style: const TextStyle(fontSize: 12),
             child: Container(
               decoration: BoxDecoration(
                 border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.3))),
               ),
               padding: const EdgeInsets.all(5),
-              margin: EdgeInsets.only(left: 20, right: 60),
+              margin: const EdgeInsets.only(left: 20, right: 60),
 
               child: Row(
-                children: [
+                children: <Widget>[
                   GestureDetector(
                     onTap: () {
                       setState(() {
@@ -598,14 +707,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
                     ),
                   ),
 
-                  SizedBox(width: 20),
+                  const SizedBox(width: 20),
 
                   Expanded(flex: 2, child: Text(element2.stationName, maxLines: 1, overflow: TextOverflow.ellipsis)),
 
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [Text(element2.lat.toString()), Text(element2.lng.toString())],
+                      children: <Widget>[Text(element2.lat.toString()), Text(element2.lng.toString())],
                     ),
                   ),
                 ],
@@ -618,15 +727,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
       list.add(
         ExpansionTile(
           title: DefaultTextStyle(
-            style: TextStyle(fontSize: 12),
+            style: const TextStyle(fontSize: 12),
             child: Container(
               decoration: BoxDecoration(color: Colors.yellowAccent.withValues(alpha: 0.1)),
-              margin: EdgeInsets.only(top: 20),
-              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              margin: const EdgeInsets.only(top: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
 
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [Text(element.trainName), SizedBox.shrink()],
+                children: <Widget>[Text(element.trainName), const SizedBox.shrink()],
               ),
             ),
           ),
@@ -642,5 +751,3 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ControllersMixin<H
     );
   }
 }
-
-// geofenceCallback は lib/utility/functions.dart で定義

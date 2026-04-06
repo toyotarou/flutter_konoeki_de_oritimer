@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
-import 'package:flutter_oritimer/model/tokyo_train_model.dart';
-import 'package:flutter_oritimer/utility/functions.dart';
-import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:native_geofence/native_geofence.dart';
+
+import '../../controllers/controllers_mixin.dart';
+import '../../model/tokyo_train_model.dart';
+import '../../utility/functions.dart';
+import '../../utility/shared_preferences_service.dart';
+import '../parts/delete_dialog.dart';
 
 class PatternRouteDisplayAlert extends ConsumerStatefulWidget {
   const PatternRouteDisplayAlert({super.key, this.onPatternApplied});
@@ -57,7 +59,9 @@ class _PatternRouteDisplayAlertState extends ConsumerState<PatternRouteDisplayAl
                     ElevatedButton(
                       onPressed: () async {
                         final List<String>? stations = _selectedStations;
-                        if (stations == null) return;
+                        if (stations == null) {
+                          return;
+                        }
 
                         // 既存ジオフェンス・エントリをクリア
                         await NativeGeofenceManager.instance.removeAllGeofences();
@@ -81,7 +85,9 @@ class _PatternRouteDisplayAlertState extends ConsumerState<PatternRouteDisplayAl
                             }
                           }
 
-                          if (stationModel == null) continue;
+                          if (stationModel == null) {
+                            continue;
+                          }
 
                           // 座標を保存（再起動後の復元用）
                           await SharedPreferencesService.saveMultiGoalLocation(
@@ -109,7 +115,9 @@ class _PatternRouteDisplayAlertState extends ConsumerState<PatternRouteDisplayAl
                           } catch (_) {}
                         }
 
-                        if (!mounted) return;
+                        if (!mounted) {
+                          return;
+                        }
                         widget.onPatternApplied?.call();
                         // ignore: use_build_context_synchronously
                         Navigator.pop(context);
@@ -117,7 +125,7 @@ class _PatternRouteDisplayAlertState extends ConsumerState<PatternRouteDisplayAl
 
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
 
-                      child: Text('設定'),
+                      child: const Text('設定'),
                     ),
                   ],
                 ),
@@ -146,7 +154,7 @@ class _PatternRouteDisplayAlertState extends ConsumerState<PatternRouteDisplayAl
       itemBuilder: (BuildContext context, int index) {
         final int slot = sortedKeys[index];
         final List<String> stations = _patternMap[slot]!.stations;
-        String dispString = stations.join(' → ');
+        final String dispString = stations.join(' → ');
 
         return Container(
           decoration: BoxDecoration(

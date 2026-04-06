@@ -9,7 +9,7 @@ import 'screens/home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[DeviceOrientation.portraitUp]);
 
   // メモリ保護のためキャッシュ上限を控えめに（必要に応じて調整）
   PaintingBinding.instance.imageCache.maximumSize = 150; // デフォルト200

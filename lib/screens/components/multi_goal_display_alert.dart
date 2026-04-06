@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_oritimer/controllers/controllers_mixin.dart';
-import 'package:flutter_oritimer/screens/components/pattern_route_display_alert.dart';
-import 'package:flutter_oritimer/utility/functions.dart';
-import 'package:flutter_oritimer/utility/shared_preferences_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_oritimer/screens/components/multi_goal_setting_alert.dart';
-import 'package:flutter_oritimer/screens/parts/error_dialog.dart';
-import 'package:flutter_oritimer/screens/parts/oritimer_dialog.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:native_geofence/native_geofence.dart';
+
+import '../../controllers/controllers_mixin.dart';
+import '../../utility/distance_text.dart';
+import '../../utility/shared_preferences_service.dart';
+import '../parts/delete_dialog.dart';
+import '../parts/error_dialog.dart';
+import '../parts/oritimer_dialog.dart';
+import 'multi_goal_setting_alert.dart';
+import 'pattern_route_display_alert.dart';
 
 class MultiGoalDisplayAlert extends ConsumerStatefulWidget {
   const MultiGoalDisplayAlert({super.key});
@@ -66,10 +68,10 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
-                    Text('multi goal list'),
+                    const Text('multi goal list'),
 
                     Row(
-                      children: [
+                      children: <Widget>[
                         ElevatedButton(
                           onPressed: () {
                             OritimerDialog(
@@ -82,10 +84,10 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
 
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
 
-                          child: Text('パターン'),
+                          child: const Text('パターン'),
                         ),
 
-                        SizedBox(width: 10),
+                        const SizedBox(width: 10),
 
                         ElevatedButton(
                           onPressed: () async {
@@ -113,7 +115,9 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                             appParamNotifier.setSelectedMultiNumber(number: nextSlot < 10 ? nextSlot : -1);
                             appParamNotifier.setSelectedStationName(name: '');
 
-                            if (!mounted) return;
+                            if (!mounted) {
+                              return;
+                            }
                             // ignore: use_build_context_synchronously
                             OritimerDialog(context: context, widget: const MultiGoalSettingAlert()).then((_) {
                               setState(() => _loadedFromPattern = false);
@@ -123,7 +127,7 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
 
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent.withValues(alpha: 0.2)),
 
-                          child: Text('設定'),
+                          child: const Text('設定'),
                         ),
                       ],
                     ),
@@ -134,10 +138,10 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    SizedBox.shrink(),
+                  children: <Widget>[
+                    const SizedBox.shrink(),
 
-                    if (_multiGoalMap.length >= 2 && !_loadedFromPattern) ...[
+                    if (_multiGoalMap.length >= 2 && !_loadedFromPattern) ...<Widget>[
                       TextButton(
                         onPressed: () async {
                           final List<int> sortedKeys = _multiGoalMap.keys.toList()..sort();
@@ -148,15 +152,15 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                             stations: stations,
                           );
 
-                          if (!mounted) return;
+                          if (!mounted) {
+                            return;
+                          }
                           // ignore: use_build_context_synchronously
                           error_dialog(context: context, title: '登録しました', content: stations.join(' → '));
                         },
                         child: const Text('パターン登録'),
                       ),
-                    ] else ...[
-                      SizedBox.shrink(),
-                    ],
+                    ] else ...<Widget>[const SizedBox.shrink()],
                   ],
                 ),
 
@@ -191,7 +195,7 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
           ),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Stack(
-            children: [
+            children: <Widget>[
               Positioned(
                 right: 30,
                 child: Container(
@@ -238,7 +242,7 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                       child: const Icon(Icons.delete),
                     )
                   else
-                    Icon(Icons.square_outlined, color: Colors.transparent),
+                    const Icon(Icons.square_outlined, color: Colors.transparent),
                 ],
               ),
             ],

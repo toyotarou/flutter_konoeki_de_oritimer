@@ -158,3 +158,31 @@ flutter run
 | 位置情報（常時） | ジオフェンス監視・現在地取得 |
 | 通知 | ローカル通知送信 |
 | バイブレーション | アラート時の振動 |
+
+---
+
+## ジオフェンス鳴動時の全画面ダイアログ
+
+満員電車でも操作しやすいよう、ジオフェンス到達時にホーム画面全体を覆う大きなダイアログを表示する機能を追加。
+
+### 動作フロー
+
+1. ジオフェンス発火 → `geofenceCallback`（バックグラウンド isolate）が通知・バイブレーションを開始
+2. `IsolateNameServer` 経由で UI isolate へ即時通知
+3. `HomeScreen` の `ReceivePort` がメッセージを受信 → 全画面ダイアログを表示
+4. 画面をタップ → **リスト上の最初の目的地（キーが最小の multiGoal）のみ**停止・バイブレーション終了
+
+アプリがバックグラウンドの場合は `SendPort` が `null` になるため、通知のみ届く（従来通り）。
+
+### ファイル構成
+
+| ファイル | 変更内容 |
+|---------|---------|
+| `lib/utility/functions.dart` | `geofenceCallback` に `IsolateNameServer.lookupPortByName` で UI へ送信する処理を追加 |
+| `lib/screens/home_screen.dart` | `ReceivePort` 登録・ダイアログ表示・最初のゴール停止ロジックを追加。起動時のキーボード抑制のためダミー `FocusNode` を配置 |
+| `lib/screens/parts/geofence_alert_dialog.dart` | 全画面アラートダイアログウィジェット（新規作成） |
+
+### キーボード対策
+
+- ホーム画面の Column 先頭に `Focus(autofocus: true)` + ダミー `FocusNode` を配置し、起動時に TextField へフォーカスが当たらないようにしている
+- ジオフェンス発火時は `_dummyFocusNode.requestFocus()` でフォーカスをダミーノードへ移してからダイアログを表示

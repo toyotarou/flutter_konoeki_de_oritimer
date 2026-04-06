@@ -109,7 +109,10 @@ class SharedPreferencesService {
     final Map<int, ({String name, List<String> stations})> result = <int, ({String name, List<String> stations})>{};
     for (int i = 0; i < 50; i++) {
       final String? raw = prefs.getString('$_kRoutePatternPrefix$i');
-      if (raw == null) continue;
+
+      if (raw == null) {
+        continue;
+      }
       try {
         final Map<String, dynamic> map = jsonDecode(raw) as Map<String, dynamic>;
         result[i] = (name: map['name'] as String, stations: (map['stations'] as List<dynamic>).cast<String>());
@@ -122,6 +125,28 @@ class SharedPreferencesService {
   static Future<void> deleteRoutePattern({required int slot}) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove('$_kRoutePatternPrefix$slot');
+  }
+
+  // ─── geofencePendingAlert ────────────────────────────
+
+  static const String kGeofencePendingAlert = 'geofence_pending_alert';
+
+  /// ジオフェンス発火済みフラグを保存する
+  static Future<void> saveGeofencePendingAlert() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(kGeofencePendingAlert, true);
+  }
+
+  /// ジオフェンス発火済みフラグを読み込む
+  static Future<bool> loadGeofencePendingAlert() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(kGeofencePendingAlert) ?? false;
+  }
+
+  /// ジオフェンス発火済みフラグをクリアする
+  static Future<void> clearGeofencePendingAlert() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove(kGeofencePendingAlert);
   }
 
   // ─── selectedStation ─────────────────────────────────

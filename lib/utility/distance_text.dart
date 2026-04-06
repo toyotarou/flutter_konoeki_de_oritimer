@@ -10,7 +10,9 @@ String distanceText({
   required Position? currentPosition,
   required List<TokyoTrainModel> trainList,
 }) {
-  if (currentPosition == null) return '---';
+  if (currentPosition == null) {
+    return '---';
+  }
 
   for (final TokyoTrainModel train in trainList) {
     for (final TokyoStationModel station in train.station) {

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:native_geofence/native_geofence.dart';
 
 import '../../controllers/controllers_mixin.dart';
+import '../../model/tokyo_train_model.dart';
 import '../../utility/distance_text.dart';
 import '../../utility/shared_preferences_service.dart';
 import '../parts/delete_dialog.dart';
@@ -174,6 +176,18 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
   }
 
   ///
+  LatLng? _getStationLatLng(String stationName) {
+    for (final TokyoTrainModel train in tokyoTrainState.tokyoTrainList) {
+      for (final TokyoStationModel station in train.station) {
+        if (station.stationName == stationName) {
+          return LatLng(station.lat, station.lng);
+        }
+      }
+    }
+    return null;
+  }
+
+  ///
   Widget _buildMultiGoalList() {
     if (_multiGoalMap.isEmpty) {
       return const Center(child: Text('登録なし'));
@@ -188,6 +202,10 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
         final int number = sortedKeys[index];
         final String stationName = _multiGoalMap[number]!;
         final bool isLast = number == lastKey;
+
+        final LatLng? fromLatLng = index == 0
+            ? (_currentPosition != null ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude) : null)
+            : _getStationLatLng(_multiGoalMap[sortedKeys[index - 1]]!);
 
         return Container(
           decoration: BoxDecoration(
@@ -204,7 +222,7 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                   child: Text(
                     distanceText(
                       stationName: stationName,
-                      currentPosition: _currentPosition,
+                      fromLatLng: fromLatLng,
                       trainList: tokyoTrainState.tokyoTrainList,
                     ),
                     textAlign: TextAlign.center,

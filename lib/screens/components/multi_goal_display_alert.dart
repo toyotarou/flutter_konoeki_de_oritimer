@@ -149,6 +149,28 @@ class _MultiGoalDisplayAlertState extends ConsumerState<MultiGoalDisplayAlert>
                           final List<int> sortedKeys = _multiGoalMap.keys.toList()..sort();
                           final List<String> stations = sortedKeys.map((int k) => _multiGoalMap[k]!).toList();
 
+                          final Map<int, ({String name, List<String> stations})> existing =
+                              await SharedPreferencesService.loadAllRoutePatterns();
+
+                          final bool isDuplicate = existing.values.any(
+                            (({String name, List<String> stations}) p) =>
+                                p.stations.length == stations.length &&
+                                List<bool>.generate(
+                                  stations.length,
+                                  (int i) => p.stations[i] == stations[i],
+                                ).every((bool v) => v),
+                          );
+
+                          if (!mounted) {
+                            return;
+                          }
+
+                          if (isDuplicate) {
+                            // ignore: use_build_context_synchronously
+                            error_dialog(context: context, title: '登録済みです', content: '同じパターンがすでに登録されています。');
+                            return;
+                          }
+
                           await SharedPreferencesService.saveRoutePattern(
                             name: DateTime.now().millisecondsSinceEpoch.toString(),
                             stations: stations,
